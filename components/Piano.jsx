@@ -114,7 +114,11 @@ export default function Piano() {
     const r = e?.detail
     if (!r) return
 
-    const targetUrl = r.song_path || null
+    // CHANGED: Instead of a raw file path, hit our secure API proxy endpoint
+    // r.song_path now contains just the file name (e.g., "vathapi.mp3")
+    const targetUrl = r.song_path
+      ? `/api/songs/${encodeURIComponent(r.song_path)}`
+      : null
     setSongUrl(targetUrl)
 
     if (audioRef.current) {
@@ -632,10 +636,12 @@ export default function Piano() {
         </div>
 
         {songUrl && (
-          <div className="ml-auto bg-gray-800 p-1 rounded-lg border border-gray-700 flex items-center shadow-md">
+          <div
+            className={`ml-auto bg-gray-800 p-1 rounded-lg border border-gray-700 flex items-center shadow-md ${!songUrl ? "opacity-30 pointer-events-none" : ""}`}
+          >
             <audio
               controls
-              src={songUrl}
+              src={songUrl || ""}
               ref={audioRef}
               className="h-9 w-64 block accent-emerald-500 rounded"
             />
