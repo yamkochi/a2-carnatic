@@ -3,10 +3,9 @@ import path from "path"
 import { NextResponse } from "next/server"
 
 export async function GET(request, { params }) {
-  // Await params as required by newer Next.js versions
-  const { filename } = await params
+  // FIXED: Next.js 13.4 uses plain objects for params. Do NOT await them.
+  const { filename } = params
 
-  // Retrieve path from your environment variables
   const storageDir = process.env.MELA_SONGS_STORAGE_DIR
 
   if (!storageDir) {
@@ -16,14 +15,12 @@ export async function GET(request, { params }) {
     )
   }
 
-  // Prevent directory traversal attacks for safety
   const safeFilename = path.basename(filename)
   const filePath = path.join(storageDir, safeFilename)
 
   try {
     const fileBuffer = await fs.readFile(filePath)
 
-    // Automatically detect content type matching the file extension
     let contentType = "audio/mpeg"
     if (safeFilename.endsWith(".wav")) contentType = "audio/wav"
     if (safeFilename.endsWith(".ogg")) contentType = "audio/ogg"
