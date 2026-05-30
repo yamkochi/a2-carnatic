@@ -114,22 +114,14 @@ export default function Piano() {
     const r = e?.detail
     if (!r) return
 
-    // CHANGED: Instead of a raw file path, hit our secure API proxy endpoint
-    // r.song_path now contains just the file name (e.g., "vathapi.mp3")
-    const targetUrl = r.song_path
-      ? `/api/songs/${encodeURIComponent(r.song_path)}`
-      : null
-    setSongUrl(targetUrl)
-
+    // 1. Reset current audio track cleanly first to prevent overlapping streams
     if (audioRef.current) {
       audioRef.current.pause()
-      setTimeout(() => {
-        if (audioRef.current) {
-          audioRef.current.load()
-        }
-      }, 0)
+      audioRef.current.src = "" // Empty out old stream data
     }
+    setSongUrl(null)
 
+    // 2. Map and parse swaram tokens for layout keys
     const tokens = (r.swaram || "").trim().split(/\s+/)
     const positionLabels = Array.from({ length: 12 }, () => [])
 
@@ -142,6 +134,14 @@ export default function Piano() {
 
     const firstOctaveLabels = positionLabels.map((arr) => arr.join(", "))
     setLabels([...firstOctaveLabels, ...firstOctaveLabels])
+
+    // 3. Mount the new audio path after layout labels finish rendering
+    setTimeout(() => {
+      const targetUrl = r.song_path
+        ? `/api/songs/${encodeURIComponent(r.song_path)}`
+        : null
+      setSongUrl(targetUrl)
+    }, 100)
   }
 
   function killAllActiveVoices() {
@@ -636,12 +636,11 @@ export default function Piano() {
         </div>
 
         {songUrl && (
-          <div
-            className={`ml-auto bg-gray-800 p-1 rounded-lg border border-gray-700 flex items-center shadow-md ${!songUrl ? "opacity-30 pointer-events-none" : ""}`}
-          >
+          <div className="ml-auto bg-gray-800 p-1 rounded-lg border border-gray-700 flex items-center shadow-md">
             <audio
               controls
-              src={songUrl || ""}
+              preload="auto"
+              src={songUrl}
               ref={audioRef}
               className="h-9 w-64 block accent-emerald-500 rounded"
             />
