@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start -p 3001"
+    "start": "next start -H 0.0.0.0 -p $PORT"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
