@@ -10,14 +10,17 @@ export async function GET(request, { params }) {
     return new NextResponse("Server Configuration Missing", { status: 500 })
   }
 
-  // 1. Production Case-Insensitivity Check
+  // Define fallback target parameters
   let safeFilename = path.basename(filename)
   let filePath = path.join(storageDir, safeFilename)
 
+  // 1. LINUX CASE-SENSITIVITY ENFORCEMENT
   if (!existsSync(filePath)) {
     try {
-      // Scan the live production folder to look for case-insensitive matches
+      // Natively read the exact items inside your production folder
       const files = readdirSync(storageDir)
+
+      // Look for a match by forcing both strings to lowercase
       const matchedFile = files.find(
         (f) => f.toLowerCase() === safeFilename.toLowerCase(),
       )
@@ -26,12 +29,15 @@ export async function GET(request, { params }) {
         filePath = path.join(storageDir, matchedFile)
         safeFilename = matchedFile
       } else {
+        // Fallback info text if file is completely missing from the directory
         return new NextResponse(`Audio File Not Found: ${safeFilename}`, {
           status: 404,
         })
       }
     } catch (e) {
-      return new NextResponse("Storage Directory Inaccessible", { status: 404 })
+      return new NextResponse("Target Storage Directory Inaccessible", {
+        status: 404,
+      })
     }
   }
 
@@ -47,7 +53,7 @@ export async function GET(request, { params }) {
 
     if (rangeHeader) {
       const parts = rangeHeader.replace(/bytes=/, "").split("-")
-      const start = parseInt(parts[0], 10)
+      const start = parseInt(parts, 10)
       const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1
 
       if (start >= totalSize || end >= totalSize) {
@@ -58,6 +64,8 @@ export async function GET(request, { params }) {
       }
 
       const chunkSize = end - start + 1
+
+      // Read binary buffer subarray directly to prevent memory pipe leaks on Hostinger
       const fullBuffer = readFileSync(filePath)
       const chunkBuffer = fullBuffer.subarray(start, end + 1)
 
@@ -83,7 +91,7 @@ export async function GET(request, { params }) {
       })
     }
   } catch (error) {
-    console.error("Production Stream Crash:", error)
+    console.error("Production API Streaming Exception:", error)
     return new NextResponse("Internal Server Error", { status: 500 })
   }
 }
