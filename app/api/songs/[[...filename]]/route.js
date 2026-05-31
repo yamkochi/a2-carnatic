@@ -9,7 +9,18 @@ import path from "path"
 import { NextResponse } from "next/server"
 
 export async function GET(request, { params }) {
-  const { filename } = params
+  // FIXED: Next.js catch-all parameters return an array. Extract the first item.
+  const filenameArray = params.filename
+  const filename = Array.isArray(filenameArray)
+    ? filenameArray[0]
+    : filenameArray
+
+  if (!filename) {
+    return new NextResponse("Missing file name target parameter", {
+      status: 400,
+    })
+  }
+
   const storageDir = process.env.MELA_SONGS_STORAGE_DIR
 
   if (!storageDir) {
@@ -22,50 +33,38 @@ export async function GET(request, { params }) {
   const safeFilename = path.basename(filename)
   let filePath = path.join(storageDir, safeFilename)
 
-  // ─── DIAGNOSTIC TEST: Attempt to write a test text file ───
+  // ─── DIAGNOSTIC EXPERIMENT: Test path write access ───
   try {
     const testFileName = `${safeFilename}.txt`
     const testFilePath = path.join(storageDir, testFileName)
-    const timestamp = new Date().toISOString()
-
-    // Attempt to write the text file to the raga_uploads/mela_songs folder
     writeFileSync(
       testFilePath,
-      `Path write test success at: ${timestamp}`,
+      `Production path confirmed at: ${new Date().toISOString()}`,
       "utf8",
     )
-    console.log(
-      `✅ DIAGNOSTIC SUCCESS: Successfully created test file -> ${testFilePath}`,
-    )
   } catch (writeError) {
-    console.error(
-      `❌ DIAGNOSTIC CRASH: Failed to write test file! Error: ${writeError.message}`,
-    )
-    // We don't return here so the application still tries to read the song file if it exists
+    console.error(`DIAGNOSTIC BLOCK: ${writeError.message}`)
   }
-  // ─────────────────────────────────────────────────────────
 
-  // Case-Sensitivity Safe Check for Linux Environments
+  // Case-Insensitive verification layer
   if (!existsSync(filePath)) {
     try {
       const files = readdirSync(storageDir)
       const matchedFile = files.find(
         (f) => f.toLowerCase() === safeFilename.toLowerCase(),
       )
-
       if (matchedFile) {
         filePath = path.join(storageDir, matchedFile)
       } else {
         return new NextResponse(
-          `Audio File Completely Missing From Directory: ${safeFilename}`,
+          `Audio file not found in storage folder: ${safeFilename}`,
           { status: 404 },
         )
       }
     } catch (dirError) {
-      return new NextResponse(
-        `Storage Directory Inaccessible or Permissions Blocked. Error: ${dirError.message}`,
-        { status: 404 },
-      )
+      return new NextResponse(`Directory Read Exception: ${dirError.message}`, {
+        status: 404,
+      })
     }
   }
 
@@ -81,7 +80,7 @@ export async function GET(request, { params }) {
 
     if (rangeHeader) {
       const parts = rangeHeader.replace(/bytes=/, "").split("-")
-      const start = parseInt(parts, 10)
+      const start = parseInt(parts[0], 10)
       const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1
 
       if (start >= totalSize || end >= totalSize) {
@@ -117,8 +116,7 @@ export async function GET(request, { params }) {
       })
     }
   } catch (error) {
-    console.error("Production Stream Crash:", error)
-    return new NextResponse(`Internal Server Error: ${error.message}`, {
+    return new NextResponse(`Internal Streaming Crash: ${error.message}`, {
       status: 500,
     })
   }

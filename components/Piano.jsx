@@ -663,7 +663,7 @@ export default function Piano() {
       </div>
       {/* FIXED: Dynamic Version Label Indicator */}
       <div className="text-right text-[10px] text-stone-50 mt-2 font-semibold pr-2">
-        v1.0.7
+        v1.0.8
       </div>
 
       {/* Keyboard Display Panel Container */}
