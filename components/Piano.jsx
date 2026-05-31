@@ -74,77 +74,108 @@ export default function Piano() {
   const [octaveShift, setOctaveShift] = useState(0)
   const [releaseTime, setReleaseTime] = useState(0.1)
   const [droneVolume, setDroneVolume] = useState(0.08)
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false) // Slide-out User Guide state
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
 
   const audioCtxRef = useRef(null)
   const audioRef = useRef(null)
   const [songUrl, setSongUrl] = useState(null)
+  // ADDED: Track the active raga object to enable dynamic root note shifting
+  const [currentRaga, setCurrentRaga] = useState(null)
+
   const sequenceTimeoutRefs = useRef([])
   const droneIntervalRef = useRef(null)
   const liveVoiceRegistryRef = useRef({})
 
+  // 1. Structural window event hook pipeline
   useEffect(() => {
-    window.addEventListener("raga-selected", handleRaga)
+    const catchRagaEvent = (e) => {
+      stopSequence()
+      if (e?.detail) {
+        setCurrentRaga(e.detail)
+      }
+    }
+
+    window.addEventListener("raga-selected", catchRagaEvent)
+
+    const handleKeyDown = (e) => {
+      if (e.repeat) return
+      const key = e.key.toLowerCase()
+      if (KEYBOARD_KEY_MAP[key] !== undefined) playKey(KEYBOARD_KEY_MAP[key])
+    }
+    const handleKeyUp = (e) => {
+      const key = e.key.toLowerCase()
+      if (KEYBOARD_KEY_MAP[key] !== undefined)
+        stopKeySound(KEYBOARD_KEY_MAP[key])
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    window.addEventListener("keyup", handleKeyUp)
+
     return () => {
-      window.removeEventListener("raga-selected", handleRaga)
+      window.removeEventListener("raga-selected", catchRagaEvent)
+      window.removeEventListener("keydown", handleKeyDown)
+      window.removeEventListener("keyup", handleKeyUp)
       stopSequence()
       stopContinuousDrone()
       killAllActiveVoices()
     }
-  }, [])
+  }, [tone, tanpuraTuning, volume, releaseTime]) // Removed startIndex dependency here
 
+  // 2. FIXED: Dynamic calculation loop that recalculates swaram layouts
+  // This triggers automatically whenever a new raga is picked OR the root note changes!
   useEffect(() => {
-    if (continuousDrone && tone === "tanpura") {
-      startContinuousDrone()
-    } else {
-      stopContinuousDrone()
+    if (!currentRaga) {
+      setLabels(Array(24).fill(""))
+      setSongUrl(null)
+      return
     }
-  }, [
-    continuousDrone,
-    tone,
-    startIndex,
-    tanpuraTuning,
-    volume,
-    octaveShift,
-    droneVolume,
-  ])
 
-  function handleRaga(e) {
-    stopSequence()
-    const r = e?.detail
-    if (!r) return
-
-    // 1. Parse swaram tokens for layout keys
-    const tokens = (r.swaram || "").trim().split(/\s+/)
-    const positionLabels = Array.from({ length: 12 }, () => [])
+    const tokens = (currentRaga.swaram || "").trim().split(/\s+/)
+    const updatedPositions = Array.from({ length: 24 }, () => [])
 
     tokens.forEach((token) => {
-      const num = SWARAM_MAP[token]
-      if (!num) return
-      const pos = (num - 1) % 12
-      positionLabels[pos].push(token)
+      const naturalSwaramOffset = SWARAM_MAP[token]
+      if (!naturalSwaramOffset) return
+
+      // Shift the target key index calculation relative to our dynamic root note choice
+      const absoluteTargetKeyIndex = naturalSwaramOffset - 1 + startIndex
+
+      // Place the swaram label in the primary octave
+      if (absoluteTargetKeyIndex >= 0 && absoluteTargetKeyIndex < 24) {
+        updatedPositions[absoluteTargetKeyIndex].push(token)
+      }
+
+      // Mirror the swaram label into the upper octave if it fits inside our 24-key hardware window
+      const highOctaveKeyIndex = absoluteTargetKeyIndex + 12
+      if (highOctaveKeyIndex >= 0 && highOctaveKeyIndex < 24) {
+        updatedPositions[highOctaveKeyIndex].push(token)
+      }
     })
 
-    const firstOctaveLabels = positionLabels.map((arr) => arr.join(", "))
-    setLabels([...firstOctaveLabels, ...firstOctaveLabels])
+    // Map label arrays into flat strings
+    const finalLabelsStringArray = updatedPositions.map((arr) => arr.join(", "))
+    setLabels(finalLabelsStringArray)
 
-    // 2. STABLE PLAYBACK PIPELINE (MANUAL ONLY)
-    const targetUrl = r.song_path
-      ? `/api/songs/${encodeURIComponent(r.song_path)}`
+    // Manage audio tracking states safely
+    const targetUrl = currentRaga.song_path
+      ? `/api/songs/${encodeURIComponent(currentRaga.song_path)}`
       : null
     setSongUrl(targetUrl)
 
     if (audioRef.current) {
       audioRef.current.pause()
-
       if (targetUrl) {
         audioRef.current.src = targetUrl
-        // Force the browser to pre-buffer the audio assets but stay paused
         audioRef.current.load()
       } else {
         audioRef.current.src = ""
       }
     }
+  }, [currentRaga, startIndex]) // 👈 CRITICAL: Recalculates whenever root note choice shifts!
+
+  // Legacy fallback placeholder function to prevent event errors
+  function handleRaga(e) {
+    // Left empty since our fresh useEffect now safely handles everything dynamically above
   }
 
   function killAllActiveVoices() {
@@ -164,6 +195,7 @@ export default function Piano() {
   }
 
   function playKey(index, customDuration = null) {
+    if (index < 0 || index >= 24) return
     const semitoneOffset = startIndex + index + octaveShift
     if (!audioCtxRef.current) {
       audioCtxRef.current = new (
@@ -193,7 +225,7 @@ export default function Piano() {
       const node1 = createTanpuraStringNode(
         ctx,
         baseFreq,
-        volume,
+        droneVolume,
         now,
         duration,
         "sawtooth",
@@ -204,7 +236,7 @@ export default function Piano() {
       const node2 = createTanpuraStringNode(
         ctx,
         baseFreq / 2,
-        volume * 0.6,
+        droneVolume * 0.6,
         now,
         duration,
         "triangle",
@@ -219,7 +251,7 @@ export default function Piano() {
       const node3 = createTanpuraStringNode(
         ctx,
         baseFreq * droneMultiplier,
-        volume * 0.4,
+        droneVolume * 0.4,
         now,
         duration,
         "sine",
@@ -321,10 +353,14 @@ export default function Piano() {
     const overlapTime = 1.5
     const scheduleInterval = (loopDuration - overlapTime) * 1000
 
+    // FIXED: Natively captures the active shifted Root Note frequency
     const rootFreq = noteFrequency(startIndex + octaveShift)
 
     function playDronePulse() {
-      const now = ctx.currentTime
+      if (!audioCtxRef.current) return
+      const now = audioCtxRef.current.currentTime
+
+      // FIXED: Maps maximum volume strictly to your active 'droneVolume' slider state
       createTanpuraStringNode(
         ctx,
         rootFreq,
@@ -370,103 +406,126 @@ export default function Piano() {
     }
   }
 
-  function stopSequence() {
-    sequenceTimeoutRefs.current.forEach(clearTimeout)
-    sequenceTimeoutRefs.current = []
-    setIsPlayingSequence(false)
-    setActiveKey(null)
-  }
-
   function playSequence() {
     if (isPlayingSequence) {
       stopSequence()
       return
     }
+    setIsPlayingSequence(true)
 
-    const validKeyIndices = []
-    for (let i = 0; i < 24; i++) {
-      if (labels[i] && labels[i].trim() !== "") {
-        validKeyIndices.push(i)
+    const activeIndices = []
+    labels.forEach((lbl, idx) => {
+      if (lbl !== "") activeIndices.push(idx)
+    })
+
+    if (activeIndices.length === 0) {
+      setIsPlayingSequence(false)
+      return
+    }
+
+    const forwardScale = activeIndices.slice(0, 8)
+    const reverseScale = [...forwardScale].reverse()
+    const fullMelodyLoop = [...forwardScale, ...reverseScale]
+
+    let step = 0
+    function runNextStep() {
+      if (step >= fullMelodyLoop.length) {
+        setIsPlayingSequence(false)
+        return
+      }
+      const keyIndex = fullMelodyLoop[step]
+      const durationSeconds = playbackSpeed / 1000
+
+      playKey(keyIndex, durationSeconds)
+      step++
+
+      const timeoutId = setTimeout(runNextStep, playbackSpeed)
+      sequenceTimeoutRefs.current.push(timeoutId)
+    }
+
+    runNextStep()
+  }
+
+  function stopSequence() {
+    setIsPlayingSequence(false)
+    sequenceTimeoutRefs.current.forEach((id) => clearTimeout(id))
+    sequenceTimeoutRefs.current = []
+    killAllActiveVoices()
+  }
+
+  // Structural arrays to map layouts of standard keys
+  const WHITE_KEY_INDICES = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23]
+  const BLACK_KEY_MAP = {
+    0: 1, // C# overlay right of C
+    2: 3, // D# overlay right of D
+    5: 6, // F# overlay right of F
+    7: 8, // G# overlay right of G
+    9: 10, // A# overlay right of A
+    12: 13, // High C#
+    14: 15, // High D#
+    17: 18, // High F#
+    19: 20, // High G#
+    21: 22, // High A#
+  }
+
+  const scrollContainerRef = useRef(null)
+
+  // Automatically slides the viewport window horizontally when the Root note shifts
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      // Find where our selected root note lives on the physical keyboard layout
+      const targetWhiteKeyIndex = WHITE_KEY_INDICES.indexOf(
+        WHITE_KEY_INDICES.find((idx) => idx >= startIndex) || 0,
+      )
+
+      if (targetWhiteKeyIndex !== -1) {
+        const keyWidthEstimate = 53 // Accurate horizontal spacing weight per key element
+        const calculateScrollOffset = targetWhiteKeyIndex * keyWidthEstimate
+
+        // Smoothly scroll the view to bring the selected root note to the left edge
+        scrollContainerRef.current.scrollTo({
+          left: calculateScrollOffset,
+          behavior: "smooth",
+        })
       }
     }
-
-    const first8Notes = validKeyIndices.slice(0, 8)
-    if (first8Notes.length === 0) return
-
-    const ascending = [...first8Notes]
-    const descending = [...first8Notes].reverse()
-    const fullSequence = [...ascending, ...descending]
-
-    setIsPlayingSequence(true)
-    sequenceTimeoutRefs.current = []
-
-    fullSequence.forEach((keyIndex, step) => {
-      const timeoutId = setTimeout(() => {
-        const noteDuration = playbackSpeed / 1000
-        playKey(keyIndex, noteDuration)
-
-        if (step === fullSequence.length - 1) {
-          setTimeout(() => setIsPlayingSequence(false), playbackSpeed)
-        }
-      }, step * playbackSpeed)
-
-      sequenceTimeoutRefs.current.push(timeoutId)
-    })
-  }
-
-  function handleKeyDown(e) {
-    if (e.repeat) return
-    const targetPianoIndex = KEYBOARD_KEY_MAP[e.key.toLowerCase()]
-    if (targetPianoIndex !== undefined && targetPianoIndex < 24) {
-      e.preventDefault()
-      playKey(targetPianoIndex)
+  }, [startIndex])
+  // EFFECT 1: Automatically updates the drone pitch whenever Root Note or Tuning shifts
+  useEffect(() => {
+    if (continuousDrone && tone === "tanpura") {
+      startContinuousDrone()
     }
-  }
+  }, [startIndex, tanpuraTuning, octaveShift])
 
-  function handleKeyUp(e) {
-    const targetPianoIndex = KEYBOARD_KEY_MAP[e.key.toLowerCase()]
-    if (targetPianoIndex !== undefined) {
-      e.preventDefault()
-      stopKeySound(targetPianoIndex)
+  // EFFECT 2: Automatically updates the drone volume in real-time when you drag the slider
+  useEffect(() => {
+    if (continuousDrone && tone === "tanpura") {
+      startContinuousDrone()
     }
-  }
-
-  const totalKeys = 24
-  const keysArray = []
-  let whiteKeyCounter = 0
-
-  for (let i = 0; i < totalKeys; i++) {
-    const currentAbsoluteNote = (startIndex + i) % 12
-    const noteName = CHROMATIC[currentAbsoluteNote]
-    const isBlack = noteName.includes("#")
-
-    keysArray.push({
-      index: i,
-      noteName,
-      isBlack,
-      labelText: labels[i] || "",
-      whiteIndex: isBlack ? whiteKeyCounter - 1 : whiteKeyCounter,
-    })
-
-    if (!isBlack) whiteKeyCounter++
-  }
-
-  const whiteKeyWidth = 60
-  const blackKeyWidth = 36
-  const totalWidth = whiteKeyCounter * whiteKeyWidth
+  }, [droneVolume])
 
   return (
-    <div className="mt-4 p-4 bg-gray-900 rounded-xl shadow-2xl select-none max-w-fit">
-      {/* Control Panel Layout */}
-      <div className="flex flex-wrap items-center gap-6 mb-6 text-white bg-gray-800 p-4 rounded-lg">
-        <div className="flex items-center gap-2">
+    <div className="mt-4 p-3 md:p-4 bg-gray-900 rounded-xl shadow-2xl select-none w-full max-w-full overflow-hidden">
+      {/* Responsive Control Panel Grid Layout */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-wrap items-center gap-4 md:gap-6 mb-6 text-white bg-gray-800 p-3 md:p-4 rounded-lg">
+        <div className="flex items-center justify-between md:justify-start gap-2 w-full md:w-auto">
           <label className="text-xs uppercase tracking-wider text-gray-400 font-bold">
             Tone
           </label>
           <select
             value={tone}
-            onChange={(e) => setTone(e.target.value)}
-            className="bg-gray-700 text-white border border-gray-600 px-3 py-1.5 rounded text-sm focus:outline-none focus:border-indigo-500"
+            onChange={(e) => {
+              const selectedTone = e.target.value
+              setTone(selectedTone)
+
+              // Direct user click context securely unblocks browser audio engine rules
+              if (selectedTone === "tanpura" && continuousDrone) {
+                setTimeout(() => startContinuousDrone(), 30)
+              } else {
+                stopContinuousDrone()
+              }
+            }}
+            className="bg-gray-700 text-white border border-gray-600 px-3 py-1.5 rounded text-sm focus:outline-none focus:border-indigo-500 w-2/3 md:w-auto"
           >
             <option value="sine">Sine</option>
             <option value="square">Square</option>
@@ -476,14 +535,14 @@ export default function Piano() {
           </select>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between md:justify-start gap-2 w-full md:w-auto md:border-l md:border-gray-700 md:pl-4">
           <label className="text-xs uppercase tracking-wider text-gray-400 font-bold">
             Root
           </label>
           <select
             value={startIndex}
             onChange={(e) => setStartIndex(parseInt(e.target.value))}
-            className="bg-gray-700 text-white border border-gray-600 px-3 py-1.5 rounded text-sm focus:outline-none focus:border-indigo-500"
+            className="bg-gray-700 text-white border border-gray-600 px-3 py-1.5 rounded text-sm focus:outline-none focus:border-indigo-500 w-2/3 md:w-auto"
           >
             {CHROMATIC.map((n, i) => (
               <option key={n} value={i}>
@@ -493,17 +552,16 @@ export default function Piano() {
           </select>
         </div>
 
-        {/* Tanpura Tuning & Volume Control Layer */}
         {tone === "tanpura" && (
           <>
-            <div className="flex items-center gap-2 border-l border-gray-700 pl-4 transition-all">
+            <div className="flex items-center justify-between md:justify-start gap-2 w-full md:w-auto md:border-l md:border-gray-700 md:pl-4 transition-all">
               <label className="text-xs uppercase tracking-wider text-gray-400 font-bold">
                 Drone Tuning
               </label>
               <select
                 value={tanpuraTuning}
                 onChange={(e) => setTanpuraTuning(e.target.value)}
-                className="bg-gray-700 text-white border border-gray-600 px-3 py-1.5 rounded text-sm focus:outline-none focus:border-indigo-500"
+                className="bg-gray-700 text-white border border-gray-600 px-3 py-1.5 rounded text-sm focus:outline-none focus:border-indigo-500 w-2/3 md:w-auto"
               >
                 <option value="Pa">Pa (Perfect 5th)</option>
                 <option value="Ma">Ma (Perfect 4th)</option>
@@ -511,7 +569,7 @@ export default function Piano() {
               </select>
             </div>
 
-            <div className="flex items-center gap-2 border-l border-gray-700 pl-4 transition-all">
+            <div className="flex items-center justify-between md:justify-start gap-2 w-full md:w-auto md:border-l md:border-gray-700 md:pl-4 transition-all">
               <label
                 className="text-xs uppercase tracking-wider text-gray-400 font-bold cursor-pointer select-none"
                 htmlFor="drone-toggle"
@@ -522,12 +580,22 @@ export default function Piano() {
                 id="drone-toggle"
                 type="checkbox"
                 checked={continuousDrone}
-                onChange={(e) => setContinuousDrone(e.target.checked)}
-                className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
+                onChange={(e) => {
+                  const isChecked = e.target.checked
+                  setContinuousDrone(isChecked)
+
+                  // Direct user click context securely unblocks browser audio engine rules
+                  if (isChecked && tone === "tanpura") {
+                    setTimeout(() => startContinuousDrone(), 30)
+                  } else {
+                    stopContinuousDrone()
+                  }
+                }}
+                className="w-5 h-5 rounded accent-indigo-500 cursor-pointer"
               />
             </div>
 
-            <div className="flex items-center gap-2 border-l border-gray-700 pl-4 transition-all">
+            <div className="flex items-center justify-between md:justify-start gap-2 w-full md:w-auto md:border-l md:border-gray-700 md:pl-4 transition-all">
               <label className="text-xs uppercase tracking-wider text-gray-400 font-bold">
                 Drone Vol
               </label>
@@ -538,21 +606,20 @@ export default function Piano() {
                 step="0.01"
                 value={droneVolume}
                 onChange={(e) => setDroneVolume(parseFloat(e.target.value))}
-                className="w-20 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                className="w-32 md:w-20 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
               />
             </div>
           </>
         )}
 
-        {/* Octave Shift Transposition Control Layout Block */}
-        <div className="flex items-center gap-2 border-l border-gray-700 pl-4">
+        <div className="flex items-center justify-between md:justify-start gap-2 w-full md:w-auto md:border-l md:border-gray-700 md:pl-4">
           <label className="text-xs uppercase tracking-wider text-gray-400 font-bold">
             Octave
           </label>
           <select
             value={octaveShift}
             onChange={(e) => setOctaveShift(parseInt(e.target.value))}
-            className="bg-gray-700 text-white border border-gray-600 px-3 py-1.5 rounded text-sm focus:outline-none focus:border-indigo-500"
+            className="bg-gray-700 text-white border border-gray-600 px-3 py-1.5 rounded text-sm focus:outline-none focus:border-indigo-500 w-2/3 md:w-auto"
           >
             <option value={-12}>Low (Mandra Sthayi)</option>
             <option value={0}>Middle (Madhya Sthayi)</option>
@@ -560,8 +627,7 @@ export default function Piano() {
           </select>
         </div>
 
-        {/* Master Volume Control */}
-        <div className="flex items-center gap-2 border-l border-gray-700 pl-4">
+        <div className="flex items-center justify-between md:justify-start gap-2 w-full md:w-auto md:border-l md:border-gray-700 md:pl-4">
           <label className="text-xs uppercase tracking-wider text-gray-400 font-bold">
             Volume
           </label>
@@ -572,12 +638,11 @@ export default function Piano() {
             step="0.01"
             value={volume}
             onChange={(e) => setVolume(parseFloat(e.target.value))}
-            className="w-24 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+            className="w-32 md:w-24 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
           />
         </div>
 
-        {/* Release Envelope Parameter Control Slider */}
-        <div className="flex items-center gap-2 border-l border-gray-700 pl-4">
+        <div className="flex items-center justify-between md:justify-start gap-2 w-full md:w-auto md:border-l md:border-gray-700 md:pl-4">
           <label className="text-xs uppercase tracking-wider text-gray-400 font-bold">
             Release
           </label>
@@ -588,19 +653,18 @@ export default function Piano() {
             step="0.02"
             value={releaseTime}
             onChange={(e) => setReleaseTime(parseFloat(e.target.value))}
-            className="w-20 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
+            className="w-32 md:w-20 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
           />
         </div>
 
-        {/* Speed Option Selector */}
-        <div className="flex items-center gap-2 border-l border-gray-700 pl-4">
+        <div className="flex items-center justify-between md:justify-start gap-2 w-full md:w-auto md:border-l md:border-gray-700 md:pl-4">
           <label className="text-xs uppercase tracking-wider text-gray-400 font-bold">
             Speed
           </label>
           <select
             value={playbackSpeed}
             onChange={(e) => setPlaybackSpeed(parseInt(e.target.value))}
-            className="bg-gray-700 text-white border border-gray-600 px-3 py-1.5 rounded text-sm focus:outline-none focus:border-indigo-500"
+            className="bg-gray-700 text-white border border-gray-600 px-3 py-1.5 rounded text-sm focus:outline-none focus:border-indigo-500 w-2/3 md:w-auto"
           >
             <option value={1000}>1 sec / note</option>
             <option value={500}>1/2 sec / note</option>
@@ -608,21 +672,7 @@ export default function Piano() {
           </select>
         </div>
 
-        {/* Play Sequence Button */}
-        <button
-          onClick={playSequence}
-          className={`px-4 py-1.5 rounded text-sm font-bold tracking-wide uppercase transition-colors duration-150
-            ${
-              isPlayingSequence
-                ? "bg-red-600 text-white hover:bg-red-700 animate-pulse"
-                : "bg-emerald-600 text-white hover:bg-emerald-500"
-            }`}
-        >
-          {isPlayingSequence ? "■ Stop Sequence" : "▶ Play Sequence"}
-        </button>
-
-        {/* Highlight Guide Toggle Switch */}
-        <div className="flex items-center gap-2 border-l border-gray-700 pl-4">
+        <div className="flex items-center justify-between md:justify-start gap-2 w-full md:w-auto md:border-l md:border-gray-700 md:pl-4">
           <label
             className="text-xs uppercase tracking-wider text-gray-400 font-bold cursor-pointer select-none"
             htmlFor="guide-toggle"
@@ -634,183 +684,153 @@ export default function Piano() {
             type="checkbox"
             checked={showHighlight}
             onChange={(e) => setShowHighlight(e.target.checked)}
-            className="w-4 h-4 rounded accent-emerald-500 cursor-pointer"
+            className="w-5 h-5 rounded accent-emerald-500 cursor-pointer"
           />
         </div>
 
-        {/* FIXED: Keeps media player locked and ready for manual user interaction */}
+        <button
+          onClick={playSequence}
+          className={`w-full md:w-auto px-4 py-2 md:py-1.5 rounded text-sm font-bold tracking-wide uppercase transition-colors duration-150 order-first md:order-none
+            ${isPlayingSequence ? "bg-red-600 text-white hover:bg-red-700 animate-pulse" : "bg-emerald-600 text-white hover:bg-emerald-500"}`}
+        >
+          {isPlayingSequence ? "■ Stop Sequence" : "▶ Play Sequence"}
+        </button>
+
         <div
-          className={`ml-auto bg-gray-800 p-1 rounded-lg border border-gray-700 flex items-center shadow-md ${!songUrl ? "opacity-30 pointer-events-none" : ""}`}
+          className={`w-full md:w-auto md:ml-auto bg-gray-800 p-1 rounded-lg border border-gray-700 flex items-center justify-center shadow-md ${!songUrl ? "opacity-30 pointer-events-none" : ""}`}
         >
           <audio
             controls
             preload="auto"
             src={songUrl || ""}
             ref={audioRef}
-            className="h-9 w-64 block accent-emerald-500 rounded"
+            className="h-9 w-full sm:w-64 block accent-emerald-500 rounded"
           />
         </div>
       </div>
-      {/* FIXED: Dynamic Version Label Indicator */}
-      <div className="text-right text-[10px] text-stone-50 mt-2 font-semibold pr-2">
-        v1.0.9
-      </div>
 
-      {/* Keyboard Display Panel Container */}
+      {/* Touch-Friendly Swipeable Piano Keyboard Container Wrapper */}
+      {/* PIANO INTERFACE CONTAINER */}
       <div
-        onKeyDown={handleKeyDown}
-        onKeyUp={handleKeyUp}
-        tabIndex={0}
-        className="overflow-x-auto p-2 bg-gray-950 rounded-lg custom-scrollbar focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+        ref={scrollContainerRef}
+        className="w-full overflow-x-auto touch-pan-x pb-4 pt-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-800"
       >
-        <div
-          className="relative h-64 shadow-inner"
-          style={{ width: `${totalWidth}px` }}
-        >
-          {/* Layer 1: White Keys */}
-          {keysArray
-            .filter((k) => !k.isBlack)
-            .map((key) => {
-              const isActive = activeKey === key.index
-              const hasSwaram = key.labelText.trim() !== ""
+        <div className="flex relative bg-gray-950 p-3 rounded-xl border border-gray-800 h-64 min-w-[950px] select-none">
+          {WHITE_KEY_INDICES.map((whiteIndex) => {
+            const blackIndex = BLACK_KEY_MAP[whiteIndex]
 
-              const matchingComputerKey =
-                Object.keys(KEYBOARD_KEY_MAP).find(
-                  (k) =>
-                    KEYBOARD_KEY_MAP[k] === key.index &&
-                    !["w", "e", "t", "y", "u", "o", "p"].includes(k),
-                ) || ""
+            const westernWhiteName = CHROMATIC[whiteIndex % 12]
+            const westernBlackName =
+              blackIndex !== undefined ? CHROMATIC[blackIndex % 12] : ""
 
-              let whiteBgClass =
-                "bg-gradient-to-b from-gray-100 to-white hover:from-white hover:to-gray-50 text-gray-800"
-              if (isActive) {
-                whiteBgClass =
-                  "bg-gray-200 translate-y-0.5 shadow-none text-gray-900"
-              } else if (showHighlight && hasSwaram) {
-                whiteBgClass =
-                  "bg-gradient-to-b from-emerald-50 to-emerald-100/70 hover:from-white hover:to-emerald-100 shadow-[inset_0_-8px_0_#d1fae5,0_4px_3px_rgba(0,0,0,0.3)]"
-              } else {
-                whiteBgClass =
-                  "bg-gradient-to-b from-gray-100 to-white hover:from-white hover:to-gray-50 shadow-[inset_0_-8px_0_#f0f0f0,0_4px_3px_rgba(0,0,0,0.3)]"
-              }
+            // Operational evaluation checks to see if this key is part of the raga scale guide
+            const isWhiteGuided = showHighlight && labels[whiteIndex]
+            const isBlackGuided =
+              blackIndex !== undefined && showHighlight && labels[blackIndex]
 
-              return (
-                <button
-                  key={key.index}
-                  onMouseDown={() => playKey(key.index)}
-                  onMouseUp={() => stopKeySound(key.index)}
-                  onMouseLeave={() => stopKeySound(key.index)}
-                  style={{
-                    left: `${key.whiteIndex * whiteKeyWidth}px`,
-                    width: `${whiteKeyWidth}px`,
+            return (
+              <div
+                key={`white-wrapper-${whiteIndex}`}
+                className="relative flex-1 min-w-[45px] max-w-[60px] h-full"
+              >
+                {/* White Key Rendering Layer */}
+                <div
+                  onMouseDown={() => playKey(whiteIndex)}
+                  onMouseUp={() => stopKeySound(whiteIndex)}
+                  onMouseLeave={() => stopKeySound(whiteIndex)}
+                  onTouchStart={(e) => {
+                    e.preventDefault()
+                    playKey(whiteIndex)
                   }}
-                  className={`absolute top-0 h-full border-r border-b border-gray-300 rounded-b-md flex flex-col justify-between p-2 pb-4 transition-all duration-75 origin-top ${whiteBgClass}`}
+                  onTouchEnd={() => stopKeySound(whiteIndex)}
+                  className={`w-full h-full border-r border-l border-gray-300 rounded-b-md flex flex-col justify-between items-center pt-2 pb-4 cursor-pointer select-none transition-all duration-75
+                    ${
+                      activeKey === whiteIndex
+                        ? "bg-gray-100 translate-y-[3px] shadow-none border-b-[1px] border-t border-t-gray-400"
+                        : isWhiteGuided
+                          ? "bg-amber-100 shadow-[0_4px_0_rgba(0,0,0,0.15)] border-b-[6px] border-b-amber-500"
+                          : "bg-white shadow-[0_4px_0_rgba(0,0,0,0.15)] border-b-[5px] border-b-gray-200"
+                    }`}
                 >
-                  <div
-                    style={{ transform: "translateY(2.5rem)" }}
-                    className="text-center w-full flex flex-col items-center"
-                  >
-                    <span className="text-xs font-bold text-gray-400">
-                      {key.noteName}
+                  {/* Fixed Western Key Label in a square badge */}
+                  <div className="w-6 h-6 rounded bg-gray-100 border border-gray-300 flex items-center justify-center shadow-sm pointer-events-none">
+                    <span className="text-[10px] font-black text-gray-800 tracking-tighter">
+                      {westernWhiteName}
                     </span>
-                    {matchingComputerKey && (
-                      <span className="inline-flex items-center justify-center text-[10px] font-bold bg-white text-black border border-gray-300 rounded-full w-5 h-5 mt-1 shadow-sm uppercase">
-                        {matchingComputerKey}
+                  </div>
+
+                  {/* Carnatic Swaram Label in a circular badge */}
+                  {labels[whiteIndex] ? (
+                    <div className="w-7 h-7 rounded-full bg-white border border-gray-300 flex items-center justify-center shadow-sm pointer-events-none animate-fade-in">
+                      <span className="text-xs font-black text-black tracking-tighter text-center truncate px-0.5">
+                        {labels[whiteIndex]}
                       </span>
+                    </div>
+                  ) : (
+                    <div className="h-7 w-7 pointer-events-none" />
+                  )}
+                </div>
+
+                {/* Overlaid Layer: Black accidental keys anchored to relative parent spaces */}
+                {blackIndex !== undefined && (
+                  <div
+                    onMouseDown={(e) => {
+                      e.stopPropagation()
+                      playKey(blackIndex)
+                    }}
+                    onMouseUp={(e) => {
+                      e.stopPropagation()
+                      stopKeySound(blackIndex)
+                    }}
+                    onMouseLeave={() => stopKeySound(blackIndex)}
+                    onTouchStart={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      playKey(blackIndex)
+                    }}
+                    onTouchEnd={() => stopKeySound(blackIndex)}
+                    style={{
+                      left: "100%",
+                      transform: "translateX(-50%)",
+                    }}
+                    className={`absolute top-0 w-7 border-l border-r rounded-b shadow-md z-20 cursor-pointer flex flex-col justify-between items-center pt-2 pb-3 transition-all duration-75 h-36
+                      ${
+                        activeKey === blackIndex
+                          ? "bg-sky-500 border-b border-b-sky-600 translate-y-[2px] shadow-none"
+                          : isBlackGuided
+                            ? "bg-sky-400 border-b-[6px] border-b-sky-600 border-l-sky-500 border-r-sky-500 shadow-md"
+                            : "bg-gray-900 border-b-[4px] border-b-gray-950 border-black"
+                      }`}
+                  >
+                    {/* Fixed Western Key Label in a square badge offset higher */}
+                    <div className="w-5 h-5 rounded bg-gray-200 border border-gray-400 flex items-center justify-center shadow-sm pointer-events-none -mt-1">
+                      <span className="text-[9px] font-black text-gray-900 tracking-tighter">
+                        {westernBlackName}
+                      </span>
+                    </div>
+
+                    {/* Carnatic Swaram Label in a circular badge */}
+                    {labels[blackIndex] ? (
+                      <div className="w-[22px] h-[22px] rounded-full bg-white flex items-center justify-center shadow-md border border-gray-400 pointer-events-none animate-fade-in">
+                        <span className="text-[10px] font-black text-black tracking-tighter text-center truncate px-0.5">
+                          {labels[blackIndex]}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="h-[22px] w-[22px] pointer-events-none" />
                     )}
                   </div>
-                  <SwaramLabel text={key.labelText} isBlack={false} />
-                </button>
-              )
-            })}
-
-          {/* Layer 2: Black Keys */}
-          {keysArray
-            .filter((k) => k.isBlack)
-            .map((key) => {
-              const isActive = activeKey === key.index
-              const hasSwaram = key.labelText.trim() !== ""
-              const leftPosition =
-                key.whiteIndex * whiteKeyWidth +
-                whiteKeyWidth -
-                blackKeyWidth / 2
-
-              const matchingComputerKey =
-                Object.keys(KEYBOARD_KEY_MAP).find(
-                  (k) =>
-                    KEYBOARD_KEY_MAP[k] === key.index &&
-                    ["w", "e", "t", "y", "u", "o", "p"].includes(k),
-                ) || ""
-
-              let blackBgClass = ""
-              if (isActive) {
-                blackBgClass = "bg-gray-800 scale-95"
-              } else if (showHighlight && hasSwaram) {
-                blackBgClass =
-                  "bg-gradient-to-b from-slate-900 via-indigo-950 to-indigo-900 hover:from-indigo-900 shadow-[0_4px_5px_rgba(0,0,0,0.6),inset_0_-4px_0_#312e81]"
-              } else {
-                blackBgClass =
-                  "bg-gradient-to-b from-gray-900 via-gray-800 to-black hover:from-gray-800 hover:to-gray-900 shadow-[0_4px_5px_rgba(0,0,0,0.6),inset_0_-4px_0_#222]"
-              }
-
-              return (
-                <button
-                  key={key.index}
-                  onMouseDown={() => playKey(key.index)}
-                  onMouseUp={() => stopKeySound(key.index)}
-                  onMouseLeave={() => stopKeySound(key.index)}
-                  style={{
-                    left: `${leftPosition}px`,
-                    width: `${blackKeyWidth}px`,
-                  }}
-                  className={`absolute top-0 h-40 rounded-b border-x border-b border-black z-10 flex flex-col justify-between p-1 pb-3 transition-all duration-75 origin-top ${blackBgClass}`}
-                >
-                  <div
-                    style={{ transform: "translateY(1.5rem)" }}
-                    className="text-center w-full flex flex-col items-center drop-shadow"
-                  >
-                    <span className="text-[10px] font-bold text-white tracking-wide">
-                      {key.noteName}
-                    </span>
-                    {matchingComputerKey && (
-                      <span className="inline-flex items-center justify-center text-[9px] font-bold bg-white text-black border border-gray-400 rounded-full w-4 h-4 mt-1 shadow-sm uppercase">
-                        {matchingComputerKey}
-                      </span>
-                    )}
-                  </div>
-                  <SwaramLabel text={key.labelText} isBlack={true} />
-                </button>
-              )
-            })}
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
-    </div>
-  )
-}
 
-// Extracted Component for Swaram Notation Layout
-function SwaramLabel({ text, isBlack }) {
-  if (!text) return <div className="h-6"></div>
-  return (
-    <div className="text-center w-full font-extrabold text-sm tracking-tighter leading-tight drop-shadow-sm z-20">
-      {text.split(", ").map((part, idx) => {
-        if (!part) return null
-        const isAnanya = part === "S" || part === "P"
-        let colorClass = isBlack ? "text-white" : "text-gray-800"
-
-        if (isAnanya) {
-          colorClass = isBlack
-            ? "text-amber-300 font-black"
-            : "text-red-600 font-black"
-        }
-
-        return (
-          <span key={idx} className={colorClass}>
-            {part}
-            {idx < text.split(", ").length - 1 ? "," : ""}
-          </span>
-        )
-      })}
+      {/* Dynamic Version Label Indicator */}
+      <div className="text-right text-[10px] text-stone-50 mt-2 font-semibold pr-2">
+        v1.2.8
+      </div>
     </div>
   )
 }
