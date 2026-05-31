@@ -1,8 +1,9 @@
-import { createReadStream, statSync, existsSync } from "fs"
+import { readFileSync, statSync, existsSync } from "fs"
 import path from "path"
 import { NextResponse } from "next/server"
 
 export async function GET(request, { params }) {
+  // Synchronous extraction matching Next.js 13.4 standards
   const { filename } = params
   const storageDir = process.env.MELA_SONGS_STORAGE_DIR
 
@@ -28,11 +29,9 @@ export async function GET(request, { params }) {
     const rangeHeader = request.headers.get("range")
 
     if (rangeHeader) {
-      // Cleanly parse "bytes=0-" or "bytes=0-1048576"
+      // Parse layout "bytes=start-end"
       const parts = rangeHeader.replace(/bytes=/, "").split("-")
       const start = parseInt(parts[0], 10)
-
-      // FIXED: Ensure we check parts[1] correctly for the end chunk boundary
       const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1
 
       if (start >= totalSize || end >= totalSize) {
@@ -43,23 +42,12 @@ export async function GET(request, { params }) {
       }
 
       const chunkSize = end - start + 1
-      const fileStream = createReadStream(filePath, { start, end })
 
-      // Convert stream chunks directly into standard Web Uint8Arrays
-      const webStream = new ReadableStream({
-        start(controller) {
-          fileStream.on("data", (chunk) =>
-            controller.enqueue(new Uint8Array(chunk)),
-          )
-          fileStream.on("end", () => controller.close())
-          fileStream.on("error", (err) => controller.error(err))
-        },
-        cancel() {
-          fileStream.destroy()
-        },
-      })
+      // Open file buffer partition natively for Hostinger
+      const fullBuffer = readFileSync(filePath)
+      const chunkBuffer = fullBuffer.subarray(start, end + 1)
 
-      return new NextResponse(webStream, {
+      return new NextResponse(chunkBuffer, {
         status: 206,
         headers: {
           "Content-Range": `bytes ${start}-${end}/${totalSize}`,
@@ -70,22 +58,9 @@ export async function GET(request, { params }) {
         },
       })
     } else {
-      // Standard full file response fallback
-      const fileStream = createReadStream(filePath)
-      const webStream = new ReadableStream({
-        start(controller) {
-          fileStream.on("data", (chunk) =>
-            controller.enqueue(new Uint8Array(chunk)),
-          )
-          fileStream.on("end", () => controller.close())
-          fileStream.on("error", (err) => controller.error(err))
-        },
-        cancel() {
-          fileStream.destroy()
-        },
-      })
-
-      return new NextResponse(webStream, {
+      // Standard full block delivery fallback
+      const fileBuffer = readFileSync(filePath)
+      return new NextResponse(fileBuffer, {
         status: 200,
         headers: {
           "Accept-Ranges": "bytes",
@@ -95,7 +70,7 @@ export async function GET(request, { params }) {
       })
     }
   } catch (error) {
-    console.error("Pipeline streaming crash:", error)
+    console.error("Production Audio Pipeline Exception:", error)
     return new NextResponse("Internal Server Error", { status: 500 })
   }
 }
