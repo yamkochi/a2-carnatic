@@ -114,10 +114,10 @@ export default function Piano() {
     const r = e?.detail
     if (!r) return
 
-    // 1. Reset current audio track cleanly first to prevent overlapping streams
+    // 1. Instantly reset and clear any previous audio player track data
     if (audioRef.current) {
       audioRef.current.pause()
-      audioRef.current.src = "" // Empty out old stream data
+      audioRef.current.src = ""
     }
     setSongUrl(null)
 
@@ -141,7 +141,26 @@ export default function Piano() {
         ? `/api/songs/${encodeURIComponent(r.song_path)}`
         : null
       setSongUrl(targetUrl)
-    }, 100)
+
+      // 4. AUTO-PLAY PIPELINE: Safely force the player to buffer and trigger
+      if (audioRef.current && targetUrl) {
+        audioRef.current.src = targetUrl
+        audioRef.current.load()
+
+        // Play the track as soon as the browser has buffered enough bytes
+        audioRef.current.oncanplay = () => {
+          audioRef.current
+            .play()
+            .then(() => console.log("🎵 Auto-play started successfully!"))
+            .catch((err) => {
+              console.warn(
+                "⚠️ Browser blocked instant audio autoplay. User interaction required:",
+                err,
+              )
+            })
+        }
+      }
+    }, 150)
   }
 
   function killAllActiveVoices() {
