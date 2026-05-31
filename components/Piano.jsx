@@ -114,14 +114,7 @@ export default function Piano() {
     const r = e?.detail
     if (!r) return
 
-    // 1. Instantly reset and clear any previous audio player track data
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.src = ""
-    }
-    setSongUrl(null)
-
-    // 2. Map and parse swaram tokens for layout keys
+    // 1. Instantly parse swaram tokens for layout keys
     const tokens = (r.swaram || "").trim().split(/\s+/)
     const positionLabels = Array.from({ length: 12 }, () => [])
 
@@ -135,32 +128,34 @@ export default function Piano() {
     const firstOctaveLabels = positionLabels.map((arr) => arr.join(", "))
     setLabels([...firstOctaveLabels, ...firstOctaveLabels])
 
-    // 3. Mount the new audio path after layout labels finish rendering
-    setTimeout(() => {
-      const targetUrl = r.song_path
-        ? `/api/songs/${encodeURIComponent(r.song_path)}`
-        : null
-      setSongUrl(targetUrl)
+    // 2. STABLE AUTO-PLAY HARDWARE CONTROL PIPELINE
+    const targetUrl = r.song_path
+      ? `/api/songs/${encodeURIComponent(r.song_path)}`
+      : null
+    setSongUrl(targetUrl)
 
-      // 4. AUTO-PLAY PIPELINE: Safely force the player to buffer and trigger
-      if (audioRef.current && targetUrl) {
+    if (audioRef.current) {
+      audioRef.current.pause()
+
+      if (targetUrl) {
         audioRef.current.src = targetUrl
         audioRef.current.load()
 
-        // Play the track as soon as the browser has buffered enough bytes
-        audioRef.current.oncanplay = () => {
-          audioRef.current
-            .play()
-            .then(() => console.log("🎵 Auto-play started successfully!"))
-            .catch((err) => {
-              console.warn(
-                "⚠️ Browser blocked instant audio autoplay. User interaction required:",
-                err,
-              )
-            })
-        }
+        // Tiny delay gives the browser time to map the new URL to the player hardware
+        setTimeout(() => {
+          if (audioRef.current) {
+            audioRef.current
+              .play()
+              .then(() => console.log("🎵 Local auto-play success!"))
+              .catch((err) => {
+                console.warn("⚠️ Browser blocked programmatic autoplay:", err)
+              })
+          }
+        }, 50)
+      } else {
+        audioRef.current.src = ""
       }
-    }, 150)
+    }
   }
 
   function killAllActiveVoices() {
@@ -654,21 +649,21 @@ export default function Piano() {
           />
         </div>
 
-        {songUrl && (
-          <div className="ml-auto bg-gray-800 p-1 rounded-lg border border-gray-700 flex items-center shadow-md">
-            <audio
-              controls
-              preload="auto"
-              src={songUrl}
-              ref={audioRef}
-              className="h-9 w-64 block accent-emerald-500 rounded"
-            />
-          </div>
-        )}
+        {/* {songUrl && ( */}
+        <div className="ml-auto bg-gray-800 p-1 rounded-lg border border-gray-700 flex items-center shadow-md">
+          <audio
+            controls
+            preload="auto"
+            src={songUrl}
+            ref={audioRef}
+            className="h-9 w-64 block accent-emerald-500 rounded"
+          />
+        </div>
+        {/* )} */}
       </div>
       {/* FIXED: Dynamic Version Label Indicator */}
       <div className="text-right text-[10px] text-stone-50 mt-2 font-semibold pr-2">
-        v1.0.2
+        v1.0.4
       </div>
 
       {/* Keyboard Display Panel Container */}
