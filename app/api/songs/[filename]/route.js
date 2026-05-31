@@ -1,9 +1,8 @@
-import { readFileSync, statSync, existsSync } from "fs"
+import { readFileSync, statSync, existsSync, readdirSync } from "fs"
 import path from "path"
 import { NextResponse } from "next/server"
 
 export async function GET(request, { params }) {
-  // Synchronous extraction matching Next.js 13.4 standards
   const { filename } = params
   const storageDir = process.env.MELA_SONGS_STORAGE_DIR
 
@@ -11,11 +10,29 @@ export async function GET(request, { params }) {
     return new NextResponse("Server Configuration Missing", { status: 500 })
   }
 
-  const safeFilename = path.basename(filename)
-  const filePath = path.join(storageDir, safeFilename)
+  // 1. Production Case-Insensitivity Check
+  let safeFilename = path.basename(filename)
+  let filePath = path.join(storageDir, safeFilename)
 
   if (!existsSync(filePath)) {
-    return new NextResponse("Audio File Not Found", { status: 404 })
+    try {
+      // Scan the live production folder to look for case-insensitive matches
+      const files = readdirSync(storageDir)
+      const matchedFile = files.find(
+        (f) => f.toLowerCase() === safeFilename.toLowerCase(),
+      )
+
+      if (matchedFile) {
+        filePath = path.join(storageDir, matchedFile)
+        safeFilename = matchedFile
+      } else {
+        return new NextResponse(`Audio File Not Found: ${safeFilename}`, {
+          status: 404,
+        })
+      }
+    } catch (e) {
+      return new NextResponse("Storage Directory Inaccessible", { status: 404 })
+    }
   }
 
   try {
@@ -23,13 +40,12 @@ export async function GET(request, { params }) {
     const totalSize = stats.size
 
     let contentType = "audio/mpeg"
-    if (safeFilename.endsWith(".wav")) contentType = "audio/wav"
-    if (safeFilename.endsWith(".ogg")) contentType = "audio/ogg"
+    if (safeFilename.toLowerCase().endsWith(".wav")) contentType = "audio/wav"
+    if (safeFilename.toLowerCase().endsWith(".ogg")) contentType = "audio/ogg"
 
     const rangeHeader = request.headers.get("range")
 
     if (rangeHeader) {
-      // Parse layout "bytes=start-end"
       const parts = rangeHeader.replace(/bytes=/, "").split("-")
       const start = parseInt(parts[0], 10)
       const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1
@@ -42,8 +58,6 @@ export async function GET(request, { params }) {
       }
 
       const chunkSize = end - start + 1
-
-      // Open file buffer partition natively for Hostinger
       const fullBuffer = readFileSync(filePath)
       const chunkBuffer = fullBuffer.subarray(start, end + 1)
 
@@ -58,7 +72,6 @@ export async function GET(request, { params }) {
         },
       })
     } else {
-      // Standard full block delivery fallback
       const fileBuffer = readFileSync(filePath)
       return new NextResponse(fileBuffer, {
         status: 200,
@@ -70,7 +83,7 @@ export async function GET(request, { params }) {
       })
     }
   } catch (error) {
-    console.error("Production Audio Pipeline Exception:", error)
+    console.error("Production Stream Crash:", error)
     return new NextResponse("Internal Server Error", { status: 500 })
   }
 }
