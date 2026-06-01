@@ -20,7 +20,7 @@ export default async function MembersPage() {
   const pool = getPool()
   // Fetch columns directly out of MySQL
   const [users] = await pool.query(
-    "SELECT id, first_name, last_name, email, phone_number, address, remark, admin, photo_path, loc_visible FROM raga_users ORDER BY id DESC",
+    "SELECT id, first_name, last_name, email, phone_number, address, remark, admin, photo_path, loc_visible,user_active FROM raga_users ORDER BY id DESC",
   )
 
   return (

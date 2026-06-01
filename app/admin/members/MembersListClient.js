@@ -22,6 +22,12 @@ export default function MembersListClient({
   const [constraintData, setConstraintData] = useState(null)
   const [checkingConstraints, setCheckingConstraints] = useState(false)
 
+  // Real-time calculation loop counting all inactive directory members
+  const totalInactiveMembers = users.filter(
+    (u) =>
+      !(u.user_active === 1 || u.user_active === true || u.user_active === "1"),
+  ).length
+
   // Real-time search filter matching logic
   const filteredUsers = users.filter((member) => {
     const query = searchQuery.toLowerCase().trim()
@@ -41,12 +47,9 @@ export default function MembersListClient({
   })
 
   // DYNAMIC LIVE LOCATION VISIBILITY TOGGLE HANDLER
-  // DYNAMIC LIVE LOCATION VISIBILITY TOGGLE HANDLER (STANDARDISED FOR BOOLEAN DEPLOYMENTS)
   const handleToggleLocationVisibility = async (userId, currentStatus) => {
-    // Determine the next state based on the active status
     const nextStatus = !currentStatus
 
-    // 1. Optimistically update local state using the numeric flags expected by the render block
     setUsers((prevUsers) =>
       prevUsers.map((u) =>
         u.id === userId ? { ...u, loc_visible: nextStatus ? 1 : 0 } : u,
@@ -63,11 +66,9 @@ export default function MembersListClient({
       const data = await res.json()
 
       if (res.ok && data.success) {
-        // 2. Alert the admin upon verified database change success
         alert(`Success: ${data.message || "Visibility updated in database."}`)
         router.refresh()
       } else {
-        // 3. Rollback local state to old value if database rejection occurs
         setUsers((prevUsers) =>
           prevUsers.map((u) =>
             u.id === userId ? { ...u, loc_visible: currentStatus ? 1 : 0 } : u,
@@ -76,13 +77,54 @@ export default function MembersListClient({
         alert(`Error: ${data.error || "Failed to update database table."}`)
       }
     } catch (err) {
-      // 4. Rollback local state on network connection failure
       setUsers((prevUsers) =>
         prevUsers.map((u) =>
           u.id === userId ? { ...u, loc_visible: currentStatus ? 1 : 0 } : u,
         ),
       )
       alert("Network handshake connection error. Changes reverted.")
+    }
+  }
+
+  // NEWLY ADDED: INSTANT USER ACCOUNT STATUS INSTANT TOGGLE HANDLER
+  const handleToggleUserStatus = async (userId, currentStatus) => {
+    const nextStatus = !currentStatus
+
+    // Optimistically update the client row view setup using numerical values matching MySQL standards
+    setUsers((prevUsers) =>
+      prevUsers.map((u) =>
+        u.id === userId ? { ...u, user_active: nextStatus ? 1 : 0 } : u,
+      ),
+    )
+
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/toggle-status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userActive: nextStatus }),
+      })
+
+      const data = await res.json()
+
+      if (res.ok && data.success) {
+        alert(`Success: ${data.message || "Account profile status committed."}`)
+        router.refresh()
+      } else {
+        // Revert cleanly to previous true/false flag state on unexpected platform validation rejections
+        setUsers((prevUsers) =>
+          prevUsers.map((u) =>
+            u.id === userId ? { ...u, user_active: currentStatus ? 1 : 0 } : u,
+          ),
+        )
+        alert(`Error: ${data.error || "Database transmission rejected."}`)
+      }
+    } catch (err) {
+      setUsers((prevUsers) =>
+        prevUsers.map((u) =>
+          u.id === userId ? { ...u, user_active: currentStatus ? 1 : 0 } : u,
+        ),
+      )
+      alert("Network handshake connection error. Status state reverted.")
     }
   }
 
@@ -184,30 +226,43 @@ export default function MembersListClient({
 
   return (
     <div className="space-y-4">
-      {/* INSTANT INTERFACE FILTER ENGINE */}
-      <div className="relative max-w-md w-full group">
-        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-          <svg
-            className="h-4 w-4 text-gray-400 group-focus-within:text-indigo-500 transition-colors"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2.5"
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-            />
-          </svg>
+      {/* FILTER & REAL-TIME STATS HEADER CONTAINER BLOCK */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full">
+        {/* INSTANT INTERFACE FILTER ENGINE */}
+        <div className="relative max-w-md w-full group">
+          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+            <svg
+              className="h-4 w-4 text-gray-400 group-focus-within:text-indigo-500 transition-colors"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2.5"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+          </div>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Instant search by first name, last name, or email..."
+            className="w-full pl-10 pr-4 py-3 bg-white text-gray-800 text-sm font-medium border border-gray-200 rounded-xl outline-none shadow-sm transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+          />
         </div>
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Instant search by first name, last name, or email..."
-          className="w-full pl-10 pr-4 py-3 bg-white text-gray-800 text-sm font-medium border border-gray-200 rounded-xl outline-none shadow-sm transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-        />
+
+        {/* RE-ALIGNED: Fixed alignment push to the absolute right side using sm:ml-auto */}
+        <div className="w-full sm:w-auto sm:ml-auto flex justify-end">
+          <div className="px-4 py-2.5 bg-rose-50 border border-rose-200 rounded-xl shadow-sm text-sm font-bold text-rose-700 tracking-wide select-none animate-fade-in whitespace-nowrap">
+            Total Not_active Members ={" "}
+            <span className="bg-rose-600 text-white font-black px-2 py-0.5 rounded-md text-xs ml-1.5 inline-block tabular-nums shadow-sm">
+              {totalInactiveMembers}
+            </span>
+          </div>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
@@ -221,21 +276,31 @@ export default function MembersListClient({
                 <th className="p-4 bg-gray-900">Email Address</th>
                 <th className="p-4 bg-gray-900">Phone Number</th>
                 <th className="p-4 bg-gray-900">Map Visibility</th>
+                <th className="p-4 bg-gray-900">Account Status</th>
                 <th className="p-4 bg-gray-900 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm font-medium text-gray-700">
               {filteredUsers.length > 0 ? (
                 filteredUsers.map((member) => {
-                  // Evaluates true if loc_visible is 1 or true, accommodating the native MySQL boolean return
+                  // Precise database evaluation for MySQL TINYINT/Boolean outputs
                   const isVisible =
                     member.loc_visible === 1 || member.loc_visible === true
+
+                  // SAFE CORRECTION: Explicit fallback tracking to prevent default 'false' on page load
+                  const isActive =
+                    member.user_active === 1 ||
+                    member.user_active === true ||
+                    member.user_active === "1" ||
+                    Boolean(member.user_active)
+
                   return (
                     <tr
                       key={member.id}
                       className="hover:bg-gray-50/70 transition-colors"
                     >
-                      <td className="p-4">
+                      {/* 1. PHOTO COLUMN */}
+                      <td className="p-4 w-16">
                         <img
                           src={
                             member.photo_path
@@ -249,19 +314,45 @@ export default function MembersListClient({
                           }}
                         />
                       </td>
-                      <td className="p-4 whitespace-nowrap">
-                        {member.first_name || "—"}
-                      </td>
-                      <td className="p-4 whitespace-nowrap">
-                        {member.last_name || "—"}
-                      </td>
-                      <td className="p-4 font-mono text-xs">{member.email}</td>
-                      <td className="p-4 whitespace-nowrap text-xs text-gray-500">
-                        {member.phone_number || "—"}
+
+                      {/* 2. FIRST NAME COLUMN */}
+                      <td className="p-4 whitespace-nowrap align-middle">
+                        {member.first_name || (
+                          <span className="text-gray-300 italic font-normal">
+                            —
+                          </span>
+                        )}
                       </td>
 
-                      {/* NEW: DYNAMIC QUICK-TOGGLE SWAP CELL CONTAINER */}
-                      <td className="p-4 whitespace-nowrap">
+                      {/* 3. LAST NAME COLUMN */}
+                      <td className="p-4 whitespace-nowrap align-middle">
+                        {member.last_name || (
+                          <span className="text-gray-300 italic font-normal">
+                            —
+                          </span>
+                        )}
+                      </td>
+
+                      {/* 4. EMAIL ADDRESS COLUMN */}
+                      <td className="p-4 font-mono text-xs align-middle">
+                        {member.email || (
+                          <span className="text-gray-300 italic font-normal">
+                            —
+                          </span>
+                        )}
+                      </td>
+
+                      {/* 5. PHONE NUMBER COLUMN */}
+                      <td className="p-4 whitespace-nowrap text-xs text-gray-500 align-middle">
+                        {member.phone_number || (
+                          <span className="text-gray-300 italic font-normal">
+                            —
+                          </span>
+                        )}
+                      </td>
+
+                      {/* 6. MAP VISIBILITY COLUMN */}
+                      <td className="p-4 whitespace-nowrap align-middle">
                         {currentAdminStatus ? (
                           <button
                             type="button"
@@ -271,7 +362,7 @@ export default function MembersListClient({
                                 isVisible,
                               )
                             }
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
                               isVisible
                                 ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
                                 : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
@@ -288,13 +379,37 @@ export default function MembersListClient({
                         )}
                       </td>
 
-                      <td className="p-4">
+                      {/* 7. ACCOUNT STATUS COLUMN */}
+                      <td className="p-4 whitespace-nowrap align-middle">
+                        {currentAdminStatus ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleToggleUserStatus(member.id, isActive)
+                            }
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                              isActive
+                                ? "bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100"
+                                : "bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100"
+                            }`}
+                          >
+                            {isActive ? "🟢 Active" : "🔴 Not-Active"}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">
+                            {isActive ? "Active" : "Not-Active"}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* 8. ACTIONS COLUMN */}
+                      <td className="p-4 align-middle">
                         <div className="flex items-center justify-center gap-2">
                           {currentAdminStatus ? (
                             <>
                               <button
                                 onClick={() => openActionModal(member, "edit")}
-                                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer"
                               >
                                 Edit
                               </button>
@@ -302,7 +417,7 @@ export default function MembersListClient({
                                 onClick={() =>
                                   openActionModal(member, "delete")
                                 }
-                                className="bg-red-50 hover:bg-red-100 text-red-600 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                                className="bg-red-50 hover:bg-red-100 text-red-600 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer"
                               >
                                 Delete
                               </button>
@@ -320,7 +435,7 @@ export default function MembersListClient({
               ) : (
                 <tr>
                   <td
-                    colSpan="7"
+                    colSpan="8"
                     className="p-8 text-center text-sm font-medium text-gray-400 italic bg-gray-50/50"
                   >
                     No matching records found.
@@ -338,7 +453,7 @@ export default function MembersListClient({
           <div className="bg-white text-gray-900 rounded-2xl max-w-md w-full p-6 relative shadow-2xl">
             <button
               onClick={closeActionModal}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl font-bold"
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl font-bold cursor-pointer"
             >
               &times;
             </button>
@@ -405,7 +520,7 @@ export default function MembersListClient({
                     onChange={(e) =>
                       setEditFields({ ...editFields, admin: e.target.checked })
                     }
-                    className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                    className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"
                   />
                   <label
                     htmlFor="admin_flag"
@@ -414,78 +529,61 @@ export default function MembersListClient({
                     Grant Administrator Privileges
                   </label>
                 </div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold text-sm shadow-md transition-all"
-                >
-                  Save Member Adjustments
-                </button>
+                <div className="flex items-center justify-end space-x-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={closeActionModal}
+                    className="px-4 py-2 border rounded-xl text-sm font-bold hover:bg-gray-50 text-gray-500 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-md transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {loading ? "Saving..." : "Save Changes"}
+                  </button>
+                </div>
               </form>
             )}
 
             {modalMode === "delete" && (
               <div className="space-y-4">
-                <div className="bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-xl text-xs font-medium space-y-1.5">
-                  <p className="font-bold border-b border-amber-200 pb-1 mb-1">
-                    📋 Identity Profile Summary:
+                {checkingConstraints ? (
+                  <p className="text-sm text-gray-500 italic">
+                    Analyzing relational system dependencies...
                   </p>
-                  <p>
-                    <strong>Phone:</strong>{" "}
-                    {activeUser.phone_number || "None Specified"}
-                  </p>
-                  <p>
-                    <strong>Address:</strong>{" "}
-                    {activeUser.address || "No Registered Address"}
-                  </p>
-                  <p>
-                    <strong>Remark:</strong> {activeUser.remark || "Empty"}
-                  </p>
-                </div>
-                <div className="bg-red-50 border border-red-100 text-red-950 p-4 rounded-xl text-xs space-y-2">
-                  <p className="font-bold text-red-800 uppercase tracking-wide text-[10px]">
-                    ⚠️ Dynamic Cascade Dependencies Check:
-                  </p>
-                  {checkingConstraints ? (
-                    <p className="text-gray-500 animate-pulse font-medium">
-                      Scanning parameters on server...
+                ) : (
+                  <div className="text-sm text-gray-600 space-y-2">
+                    <p className="font-semibold text-red-600">
+                      Warning: Removing this member will clear out the profile
+                      completely.
                     </p>
-                  ) : (
-                    <div className="space-y-1">
-                      <ul className="list-disc pl-4 space-y-0.5 font-mono text-[11px] text-red-900">
+                    {constraintData && (
+                      <ul className="list-disc pl-5 space-y-1 text-xs text-gray-500">
                         <li>
-                          Activity Logs:{" "}
-                          {constraintData?.constraints?.activity_logs || 0} rows
+                          Associated Tasks: {constraintData.tasksCount || 0}
                         </li>
-                        <li>
-                          Saved Bookmarks:{" "}
-                          {constraintData?.constraints?.raga_bookmarks || 0}{" "}
-                          rows
-                        </li>
-                        <li>
-                          Detector Scores:{" "}
-                          {constraintData?.constraints?.detector_scores || 0}{" "}
-                          rows
-                        </li>
+                        <li>Log Audits: {constraintData.logsCount || 0}</li>
                       </ul>
-                    </div>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
+                    )}
+                  </div>
+                )}
+                <div className="flex items-center justify-end space-x-2 pt-2">
                   <button
                     type="button"
                     onClick={closeActionModal}
-                    className="py-2.5 border rounded-xl text-sm font-bold hover:bg-gray-50 text-gray-600 transition-colors"
+                    className="px-4 py-2 border rounded-xl text-sm font-bold hover:bg-gray-50 text-gray-500 cursor-pointer"
                   >
-                    Cancel
+                    Keep Profile
                   </button>
                   <button
-                    type="button"
                     onClick={handleDeleteSubmit}
                     disabled={loading || checkingConstraints}
-                    className="py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold transition-colors shadow-md"
+                    className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold shadow-md transition-colors disabled:opacity-50 cursor-pointer"
                   >
-                    Execute Delete
+                    {loading ? "Deleting..." : "Confirm Deletion"}
                   </button>
                 </div>
               </div>
