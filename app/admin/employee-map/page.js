@@ -34,7 +34,7 @@ export default async function EmployeeMapPage() {
 
   // 2. EXPLICIT SECURITY FILTER: Only fetch rows where loc_visible is true (1)
   const [locations] = await pool.query(
-    "SELECT id, first_name, photo_path, lat, lon FROM raga_users WHERE loc_visible = 1 AND lat IS NOT NULL AND lon IS NOT NULL",
+    "SELECT id, first_name, photo_path, lat, lon, email, attend FROM raga_users WHERE loc_visible = 1 AND lat IS NOT NULL AND lon IS NOT NULL",
   )
 
   return (

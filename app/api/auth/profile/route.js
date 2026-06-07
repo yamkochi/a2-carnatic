@@ -30,6 +30,7 @@ export async function PUT(req) {
       locVisible,
       lat,
       lon,
+      attend,
     } = body
 
     // Security check: Ensure the logged-in user is only editing their own profile
@@ -46,7 +47,7 @@ export async function PUT(req) {
     let query = `
       UPDATE raga_users 
       SET first_name = ?, last_name = ?, address = ?, phone_number = ?, 
-          loc_visible = ?, lat = ?, lon = ?
+          loc_visible = ?, lat = ?, lon = ?, attend = ?
     `
 
     let queryParams = [
@@ -57,6 +58,7 @@ export async function PUT(req) {
       locVisible ? 1 : 0,
       lat || null,
       lon || null,
+      attend ? 1 : 0,
     ]
 
     // 3. SECURE ENCRYPTION STEP:
@@ -86,6 +88,7 @@ export async function PUT(req) {
 
     // 5. Sync and save the modified data back into the cookie session state
     session.user.first_name = firstName
+    session.user.attend = attend ? 1 : 0
     await session.save()
 
     return NextResponse.json({

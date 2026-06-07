@@ -21,6 +21,7 @@ export default function RagaList() {
 
   async function fetchChakras() {
     try {
+      //  console.log("Fetching chakra list...")
       const res = await fetch("/api/chakras")
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Failed to load chakras")
@@ -59,13 +60,13 @@ export default function RagaList() {
   })
 
   return (
-    <div className="bg-white p-4 rounded shadow">
-      <h2 className="font-semibold mb-4">Select Raga</h2>
+    <div className="bg-blue-900 p-4 rounded shadow">
+      <h2 className="font-semibold text-white text-xl mb-4">Select Raga</h2>
 
       <div className="grid gap-4 md:grid-cols-[1fr_240px] mb-4">
         <div className="grid gap-4 md:grid-cols-[1fr_1fr]">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-xl font-medium text-white mb-1">
               Search by Raga Name
             </label>
             <div className="flex gap-2">
@@ -74,7 +75,7 @@ export default function RagaList() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Type a melody name"
-                className="flex-1 border border-gray-300 rounded px-3 py-2 bg-white"
+                className="flex-1 border border-gray-300 rounded px-3 py-2 bg-sky-300"
               />
               <button
                 type="button"
@@ -83,20 +84,20 @@ export default function RagaList() {
                   setChakraFilter("")
                   setSelected(null)
                 }}
-                className="border border-gray-300 rounded px-3 py-2 bg-gray-50 text-gray-700 hover:bg-gray-100"
+                className="border border-gray-300 rounded px-3 py-2 bg-sky-300 text-gray-700 hover:bg-gray-100"
               >
                 Clear
               </button>
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-lg font-medium text-white mb-1">
               Filter by Chakra
             </label>
             <select
               value={chakraFilter}
               onChange={(e) => setChakraFilter(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 py-2 bg-white"
+              className="w-full border border-gray-300 rounded px-3 py-2 bg-sky-300"
             >
               <option value="">All Chakras</option>
               {chakraList.map((chakra) => (
@@ -118,18 +119,18 @@ export default function RagaList() {
         {filteredRagas.map((r, idx) => (
           <div
             key={r.mela_no}
-            className={`grid grid-cols-[1fr_auto]  items-center gap-2 rounded-lg px-2 py-2 ${idx % 2 === 0 ? "bg-slate-50" : "bg-white"} shadow-sm min-h-[2.75rem]`}
+            className={`grid grid-cols-[1fr_auto]  items-center gap-2 rounded-lg px-2 py-2 ${idx % 2 === 0 ? "bg-sky-200" : "bg-sky-300"} shadow-sm min-h-[2.75rem]`}
           >
             <div className="h-auto">
               <div className="grid grid-cols-3 w-full text-sm font-semibold text-gray-900 truncate">
                 <span className="truncate">
                   {r.mela_no} — {r.mela_name}
                 </span>
-                <span className="text-green-500 truncate">
+                <span className="text-black truncate">
                   Chakra: {r.chakra_no} — {r.chakra_name}
                 </span>
                 {/* <span className="text-blue-600">Swaram :</span> */}
-                <span className="text-gray-500 truncate flex-wrap gap-1">
+                <span className="text-black truncate flex-wrap gap-1">
                   {"SWARAM  :  "}
                   {r.swaram.split(" ").map((note, noteIdx) => {
                     const isHighlight = note === "S" || note === "P"
@@ -165,7 +166,7 @@ export default function RagaList() {
       </div>
       {error && <div className="mt-3 text-sm text-red-600">Error: {error}</div>}
       {selected && (
-        <div className="mt-3 text-sm text-gray-700">
+        <div className="mt-3 text-xl text-white">
           Selected: {selected.mela_name}
         </div>
       )}

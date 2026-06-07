@@ -4,9 +4,8 @@ import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
-import { updateProfilePhoto } from "@/app/api/actions/user" // Imported database controller action layer
+import { updateProfilePhoto } from "@/app/api/actions/user"
 
-// Fix Leaflet marker icon asset mapping inside Next.js framework environment
 import L from "leaflet"
 const markerIcon = new L.Icon({
   iconUrl: "https://cloudflare.com",
@@ -20,7 +19,6 @@ export default function ProfileFormClient({ initialData }) {
   const router = useRouter()
   const fileInputRef = useRef(null)
 
-  // FIXED: Changed currentUser references to use initialData properties cleanly
   const [profile, setProfile] = useState({
     id: initialData?.id || "",
     first_name: initialData?.first_name || "",
@@ -30,6 +28,7 @@ export default function ProfileFormClient({ initialData }) {
     phone_number: initialData?.phone_number || "",
     password: "",
     loc_visible: initialData?.loc_visible ?? 1,
+    attend: initialData?.attend ?? 0, // 👈 Added attend to state initialization
     lat: initialData?.lat || "",
     lon: initialData?.lon || "",
     photo_path: initialData?.photo_path || "",
@@ -37,8 +36,6 @@ export default function ProfileFormClient({ initialData }) {
 
   const [message, setMessage] = useState({ type: "", text: "" })
   const [loading, setLoading] = useState(false)
-
-  // Map Selection Logic Hooks
   const [showMap, setShowMap] = useState(false)
   const [tempCoords, setTempCoords] = useState(null)
 
@@ -50,6 +47,7 @@ export default function ProfileFormClient({ initialData }) {
         admin: initialData.admin === 1 || initialData.admin === true,
         loc_visible:
           initialData.loc_visible === 1 || initialData.loc_visible === true,
+        attend: initialData.attend === 1 || initialData.attend === true, // 👈 Added boolean conversion
         lat: initialData.lat || "",
         lon: initialData.lon || "",
         photo_path: initialData.photo_path || "",
@@ -60,25 +58,20 @@ export default function ProfileFormClient({ initialData }) {
           lon: parseFloat(initialData.lon),
         })
       } else {
-        setTempCoords({ lat: 13.0827, lon: 80.2707 }) // Fallback Map Center (Chennai/Guindy region reference context)
+        setTempCoords({ lat: 13.0827, lon: 80.2707 })
       }
     }
   }, [initialData])
 
-  // Leaflet Component to handle point-and-click operations
   function MapClickHandler() {
     useMapEvents({
       click(e) {
-        // e.latlng contains { lat: ..., lng: ... }
-        // Convert it to your naming format { lat: ..., lon: ... }
         setTempCoords({
           lat: e.latlng.lat,
-          lon: e.latlng.lng, // Maps Leaflet 'lng' to your 'lon'
+          lon: e.latlng.lng,
         })
       },
     })
-
-    // Ensure the Marker uses the correct array format [lat, lon]
     return tempCoords && tempCoords.lat && tempCoords.lon ? (
       <Marker position={[tempCoords.lat, tempCoords.lon]} icon={markerIcon} />
     ) : null
@@ -92,11 +85,18 @@ export default function ProfileFormClient({ initialData }) {
     }))
   }
 
+  // 🔄 Dedicated toggle click handler for your attendance status button
+  const toggleAttendance = () => {
+    setProfile((prev) => ({
+      ...prev,
+      attend: !prev.attend,
+    }))
+  }
+
   const handlePhotoClick = () => {
     fileInputRef.current.click()
   }
 
-  // FIXED: Consolidated text fields form submit, completely isolating photoPath updates
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
@@ -112,8 +112,9 @@ export default function ProfileFormClient({ initialData }) {
           lastName: profile.last_name,
           address: profile.address,
           phoneNumber: profile.phone_number,
-          password: profile.password || null, // Sent plain-text; gets securely encrypted with bcrypt inside the route handler
+          password: profile.password || null,
           locVisible: profile.loc_visible ? 1 : 0,
+          attend: profile.attend ? 1 : 0, // 👈 Added attend parameter to PUT body payload
           lat: profile.lat ? parseFloat(profile.lat) : null,
           lon: profile.lon ? parseFloat(profile.lon) : null,
         }),
@@ -125,7 +126,7 @@ export default function ProfileFormClient({ initialData }) {
           type: "success",
           text: "Profile details updated successfully!",
         })
-        setProfile((prev) => ({ ...prev, password: "" })) // Clear out client state password input for security
+        setProfile((prev) => ({ ...prev, password: "" }))
         router.refresh()
       } else {
         setMessage({ type: "error", text: data.error || "Failed updates" })
@@ -141,7 +142,6 @@ export default function ProfileFormClient({ initialData }) {
   const handleFileChange = async (event) => {
     const files = event.target.files
     if (!files || files.length === 0) return
-
     const selectedFile = files[0]
 
     if (selectedFile.type !== "image/png") {
@@ -149,12 +149,8 @@ export default function ProfileFormClient({ initialData }) {
       return
     }
 
-    // Local runtime blob presentation path setup
     const localPreviewUrl = URL.createObjectURL(selectedFile)
-    setProfile((prev) => ({
-      ...prev,
-      photo_path: localPreviewUrl,
-    }))
+    setProfile((prev) => ({ ...prev, photo_path: localPreviewUrl }))
 
     try {
       const formData = new FormData()
@@ -165,18 +161,12 @@ export default function ProfileFormClient({ initialData }) {
         method: "POST",
         body: formData,
       })
-
       const data = await response.json()
 
       if (response.ok && data.success) {
-        // Runs our verified server action script to change column row values to 'userId.ext'
         const dbResult = await updateProfilePhoto(profile.id, data.photo_path)
-
         if (dbResult.success) {
-          setProfile((prev) => ({
-            ...prev,
-            photo_path: data.photo_path,
-          }))
+          setProfile((prev) => ({ ...prev, photo_path: data.photo_path }))
           alert("Profile picture uploaded and saved successfully!")
           router.refresh()
         } else {
@@ -203,253 +193,238 @@ export default function ProfileFormClient({ initialData }) {
   }
 
   return (
-    <div className="max-w-2xl mx-auto bg-white p-8 rounded-2xl shadow-md border border-gray-100">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">
-        Your Profile Settings
-      </h2>
-
-      {message.text && (
+    <form
+      onSubmit={handleSubmit}
+      className="max-w-2xl mx-auto bg-white p-6 rounded-2xl shadow-md border space-y-6"
+    >
+      {/* Profile Photo Display Block */}
+      <div className="flex flex-col items-center space-y-2">
         <div
-          className={`p-4 rounded-xl mb-6 text-sm font-medium ${message.type === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}
+          onClick={handlePhotoClick}
+          className="w-24 h-24 rounded-full border-4 border-indigo-100 overflow-hidden cursor-pointer hover:opacity-80 relative group"
         >
-          {message.text}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Avatar Profile Section Element Container with Preview Pipeline */}
-        <div className="flex flex-col items-center gap-4 mb-6">
-          <div
-            className="relative w-32 h-32 rounded-full overflow-hidden border-2 border-indigo-500 bg-gray-100 cursor-pointer shadow-md group"
-            onClick={handlePhotoClick}
-          >
-            <img
-              src={
-                !profile.photo_path
-                  ? "/default-avatar.png"
-                  : profile.photo_path.startsWith("blob:")
-                    ? profile.photo_path
-                    : `/api/photos/${profile.photo_path}?t=${Date.now()}` // Appends cache-buster timestamp
-              }
-              alt="Avatar"
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                e.target.src = "/default-avatar.png"
-              }}
-            />
-
-            <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity text-xs font-semibold text-center px-1">
-              Change Photo (PNG Only)
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={handlePhotoClick}
-            className="text-sm font-semibold text-indigo-600 hover:text-indigo-700"
-          >
-            Select Local PNG
-          </button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            accept="image/png"
-            className="hidden"
+          <img
+            src={
+              profile.photo_path
+                ? profile.photo_path.startsWith("blob:")
+                  ? profile.photo_path
+                  : `/api/photos/${profile.photo_path}`
+                : "/default-avatar.png"
+            }
+            alt="Profile Avatar"
+            className="w-full h-full object-cover"
           />
         </div>
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          accept="image/png"
+          className="hidden"
+        />
+        <p className="text-xs text-gray-400">
+          Click avatar frame block to upload a new PNG profile image
+        </p>
+      </div>
 
-        {/* Text Input Row Mappings */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">
-              First Name
-            </label>
-            <input
-              type="text"
-              name="first_name"
-              value={profile.first_name}
-              onChange={handleChange}
-              className="w-full border p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-gray-800"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">
-              Last Name
-            </label>
-            <input
-              type="text"
-              name="last_name"
-              value={profile.last_name}
-              onChange={handleChange}
-              className="w-full border p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-gray-800"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
-              Email (Read Only)
-            </label>
-            <input
-              type="email"
-              value={profile.email}
-              disabled
-              className="w-full border p-3 rounded-xl bg-gray-50 text-gray-400 cursor-not-allowed outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">
-              Phone Number
-            </label>
-            <input
-              type="text"
-              name="phone_number"
-              value={profile.phone_number}
-              onChange={handleChange}
-              className="w-full border p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-gray-800"
-            />
-          </div>
-        </div>
-
+      {/* Input Form Fields Grid Grid Frame */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">
-            Address
+          <label className="block text-xs font-semibold text-gray-600 mb-1">
+            First Name
           </label>
-          <textarea
-            name="address"
-            value={profile.address || ""}
+          <input
+            type="text"
+            name="first_name"
+            value={profile.first_name}
             onChange={handleChange}
-            rows="2"
-            className="w-full border p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none resize-none text-gray-800"
+            className="w-full p-2.5 border rounded-lg text-sm bg-gray-50 focus:bg-white"
           />
         </div>
-
         <div>
-          <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">
-            New Password (Leave blank to keep current)
+          <label className="block text-xs font-semibold text-gray-600 mb-1">
+            Last Name
+          </label>
+          <input
+            type="text"
+            name="last_name"
+            value={profile.last_name}
+            onChange={handleChange}
+            className="w-full p-2.5 border rounded-lg text-sm bg-gray-50 focus:bg-white"
+          />
+        </div>
+        <div className="md:col-span-2">
+          <label className="block text-xs font-semibold text-gray-600 mb-1">
+            Email Address
+          </label>
+          <input
+            type="email"
+            name="email"
+            value={profile.email}
+            disabled
+            className="w-full p-2.5 border rounded-lg text-sm bg-gray-100 cursor-not-allowed text-gray-500"
+          />
+        </div>
+        <div className="md:col-span-2">
+          <label className="block text-xs font-semibold text-gray-600 mb-1">
+            Physical Address
+          </label>
+          <input
+            type="text"
+            name="address"
+            value={profile.address}
+            onChange={handleChange}
+            className="w-full p-2.5 border rounded-lg text-sm bg-gray-50 focus:bg-white"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">
+            Phone Number
+          </label>
+          <input
+            type="text"
+            name="phone_number"
+            value={profile.phone_number}
+            onChange={handleChange}
+            className="w-full p-2.5 border rounded-lg text-sm bg-gray-50 focus:bg-white"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">
+            New Password (Leave empty to keep current)
           </label>
           <input
             type="password"
             name="password"
             value={profile.password}
             onChange={handleChange}
-            placeholder="••••••••"
-            className="w-full border p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-gray-800"
+            className="w-full p-2.5 border rounded-lg text-sm bg-gray-50 focus:bg-white"
           />
         </div>
+      </div>
 
-        <div className="bg-gray-50 p-4 rounded-xl space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-gray-700">
-              Account Privilege Level
-            </span>
-            <span
-              className={`text-xs font-bold px-3 py-1 rounded-full ${profile.admin ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"}`}
-            >
-              {profile.admin ? "Administrator" : "Standard User"}
+      {/* 🚀 TOGGLE BUTTON: New Attendance Control Section Block */}
+      <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-800">
+            Attendance Status
+          </h3>
+          <p className="text-xs text-gray-500">
+            Toggle whether you are currently active on duty or out of office.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={toggleAttendance}
+          className={`px-4 py-2 rounded-xl text-xs font-bold shadow-sm tracking-wide transition-all duration-200 cursor-pointer ${
+            profile.attend
+              ? "bg-emerald-600 text-white hover:bg-emerald-700 ring-4 ring-emerald-50"
+              : "bg-gray-200 text-gray-700 hover:bg-gray-300 ring-4 ring-gray-50"
+          }`}
+        >
+          {profile.attend ? "👍 Attending" : "👎 Not-Attending"}
+        </button>
+      </div>
+
+      {/* Configuration Switches Panel (Location Visibility Control Switch) */}
+      <div className="flex items-center space-x-3 p-2">
+        <input
+          type="checkbox"
+          id="loc_visible"
+          name="loc_visible"
+          checked={profile.loc_visible}
+          onChange={handleChange}
+          className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+        />
+        <label
+          htmlFor="loc_visible"
+          className="text-xs font-medium text-gray-700 select-none"
+        >
+          Allow background coordinate polling visibility on administrative
+          tracking dashboard modules
+        </label>
+      </div>
+
+      {/* Spatial Location Coordinate Picker Blocks Component Frame Container */}
+      <div className="space-y-2 border-t pt-4">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-gray-700">
+            Geospatial Tracking Anchors:
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowMap(!showMap)}
+            className="text-xs font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+          >
+            {showMap ? "Close Map Canvas" : "Select Coordinates on Map"}
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-4 text-xs">
+          <div>
+            Latitude:
+            <span className="font-mono bg-gray-100 px-2 py-1 rounded block mt-1">
+              {profile.lat || "Not Set"}
             </span>
           </div>
-
-          <div className="flex items-center space-x-3 pt-2 border-t border-gray-200">
-            <input
-              type="checkbox"
-              id="loc_visible"
-              name="loc_visible"
-              checked={profile.loc_visible}
-              onChange={handleChange}
-              className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-            />
-            <label
-              htmlFor="loc_visible"
-              className="text-sm font-semibold text-gray-700 select-none"
-            >
-              Make My Location Visible
-            </label>
+          <div>
+            Longitude:
+            <span className="font-mono bg-gray-100 px-2 py-1 rounded block mt-1">
+              {profile.lon || "Not Set"}
+            </span>
           </div>
         </div>
 
-        {/* Location Selector Action Sub-Layout Block */}
-        {profile.loc_visible && (
-          <div className="border border-indigo-100 p-4 rounded-xl bg-indigo-50/30 space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-indigo-900 uppercase tracking-wide">
-                Coordinates Tracking
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowMap(!showMap)}
-                className="text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg transition-colors shadow-sm"
+        {showMap && (
+          <div className="space-y-2">
+            <div className="h-[300px] w-full rounded-xl overflow-hidden border">
+              <MapContainer
+                center={
+                  tempCoords
+                    ? [tempCoords.lat, tempCoords.lon]
+                    : [13.0827, 80.2707]
+                }
+                zoom={13}
+                style={{ height: "100%", width: "100%" }}
               >
-                {showMap ? "Hide Map Box" : "📍 Mark Your Location"}
-              </button>
-            </div>
-
-            {showMap && (
-              <div className="space-y-3">
-                <div className="h-64 w-full rounded-xl overflow-hidden border border-gray-300 z-10 relative">
-                  <MapContainer
-                    center={[
-                      tempCoords?.lat || 13.0827,
-                      tempCoords?.lon || 80.2707,
-                    ]}
-                    zoom={13}
-                    style={{ height: "100%", width: "100%" }}
-                  >
-                    <TileLayer
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                      attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> contributors'
-                    />
-                    <MapClickHandler />
-                  </MapContainer>
-                </div>
-                <button
-                  type="button"
-                  onClick={confirmLocationSelection}
-                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors shadow"
-                >
-                  Confirm Selected Map Pin Location
-                </button>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
-                  Latitude (Read Only)
-                </label>
-                <input
-                  type="text"
-                  name="lat"
-                  value={profile.lat}
-                  readOnly
-                  className="w-full border p-3 rounded-xl bg-gray-100 text-gray-500 font-mono cursor-not-allowed outline-none"
+                <TileLayer
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
                 />
-              </div>
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
-                  Longitude (Read Only)
-                </label>
-                <input
-                  type="text"
-                  name="lon"
-                  value={profile.lon}
-                  readOnly
-                  className="w-full border p-3 rounded-xl bg-gray-100 text-gray-500 font-mono cursor-not-allowed outline-none"
-                />
-              </div>
+                <MapClickHandler />
+              </MapContainer>
             </div>
+            <button
+              type="button"
+              onClick={confirmLocationSelection}
+              className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
+            >
+              Confirm Coordinate Anchor Points
+            </button>
           </div>
         )}
+      </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white p-3.5 rounded-xl font-bold transition-all shadow-md"
+      {/* Feedback Message Block */}
+      {message.text && (
+        <div
+          className={`p-3 rounded-lg text-xs font-medium ${
+            message.type === "success"
+              ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
+              : "bg-red-50 border border-red-200 text-red-700"
+          }`}
         >
-          {loading ? "Saving Alterations..." : "Save Changes"}
-        </button>
-      </form>
-    </div>
+          {message.text}
+        </div>
+      )}
+
+      {/* Footer Form Submission Block Buttons Wrapper Layout Panel */}
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full py-3 bg-gray-900 text-white text-xs font-bold rounded-xl tracking-wide hover:bg-gray-800 disabled:opacity-50 transition-opacity cursor-pointer"
+      >
+        {loading ? "Saving Profile Modifications..." : "Save Profile Details"}
+      </button>
+    </form>
   )
 }

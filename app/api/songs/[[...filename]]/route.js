@@ -1,15 +1,20 @@
+// Add createReadStream to your 'fs' imports at the top
 import {
   readFileSync,
   statSync,
   existsSync,
   readdirSync,
   writeFileSync,
+  createReadStream, // Added this import
 } from "fs"
 import path from "path"
 import { NextResponse } from "next/server"
 
-export async function GET(request, { params }) {
-  // FIXED: Next.js catch-all parameters return an array. Extract the first item.
+// FIXED: Mark the function as async and await the incoming params layout array
+export async function GET(request, context) {
+  const params = await context.params
+  console.log("Received request for song file with params:", params.filename)
+
   const filenameArray = params.filename
   const filename = Array.isArray(filenameArray)
     ? filenameArray[0]
@@ -21,7 +26,7 @@ export async function GET(request, { params }) {
     })
   }
 
-  const storageDir = process.env.MELA_SONGS_STORAGE_DIR
+  const storageDir = process.env.JANYA_SONGS_STORAGE_DIR
 
   if (!storageDir) {
     return new NextResponse(
@@ -91,10 +96,11 @@ export async function GET(request, { params }) {
       }
 
       const chunkSize = end - start + 1
-      const fullBuffer = readFileSync(filePath)
-      const chunkBuffer = fullBuffer.subarray(start, end + 1)
 
-      return new NextResponse(chunkBuffer, {
+      // FIXED: Stream chunks cleanly instead of buffering the whole file into RAM
+      const fileStream = createReadStream(filePath, { start, end })
+
+      return new NextResponse(fileStream, {
         status: 206,
         headers: {
           "Content-Range": `bytes ${start}-${end}/${totalSize}`,
@@ -105,8 +111,9 @@ export async function GET(request, { params }) {
         },
       })
     } else {
-      const fileBuffer = readFileSync(filePath)
-      return new NextResponse(fileBuffer, {
+      // FIXED: Stream the full file for non-range standard downloads
+      const fileStream = createReadStream(filePath)
+      return new NextResponse(fileStream, {
         status: 200,
         headers: {
           "Accept-Ranges": "bytes",

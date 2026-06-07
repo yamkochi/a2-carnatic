@@ -28,7 +28,7 @@ export default async function ProfilePage() {
 
   const pool = getPool()
   const [rows] = await pool.query(
-    "SELECT id, first_name, last_name, email, address, phone_number, admin, photo_path, loc_visible, lat, lon FROM raga_users WHERE id = ?",
+    "SELECT id, first_name, last_name, email, address, phone_number,attend, admin, photo_path, loc_visible, lat, lon FROM raga_users WHERE id = ?",
     [session.user.id],
   )
 

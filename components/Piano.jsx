@@ -505,11 +505,11 @@ export default function Piano() {
   }, [droneVolume])
 
   return (
-    <div className="mt-4 p-3 md:p-4 bg-gray-900 rounded-xl shadow-2xl select-none w-full max-w-full overflow-hidden">
+    <div className="mt-4 p-3 md:p-4 bg-black rounded-xl shadow-2xl select-none w-full max-w-full overflow-hidden">
       {/* Responsive Control Panel Grid Layout */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-wrap items-center gap-4 md:gap-6 mb-6 text-white bg-gray-800 p-3 md:p-4 rounded-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-wrap items-center gap-4 md:gap-6 mb-6 text-white bg-blue-800 p-3 md:p-4 rounded-lg">
         <div className="flex items-center justify-between md:justify-start gap-2 w-full md:w-auto">
-          <label className="text-xs uppercase tracking-wider text-gray-400 font-bold">
+          <label className="text-xs uppercase tracking-wider text-white font-bold">
             Tone
           </label>
           <select
@@ -536,7 +536,7 @@ export default function Piano() {
         </div>
 
         <div className="flex items-center justify-between md:justify-start gap-2 w-full md:w-auto md:border-l md:border-gray-700 md:pl-4">
-          <label className="text-xs uppercase tracking-wider text-gray-400 font-bold">
+          <label className="text-xs uppercase tracking-wider text-white font-bold">
             Root
           </label>
           <select
@@ -613,7 +613,7 @@ export default function Piano() {
         )}
 
         <div className="flex items-center justify-between md:justify-start gap-2 w-full md:w-auto md:border-l md:border-gray-700 md:pl-4">
-          <label className="text-xs uppercase tracking-wider text-gray-400 font-bold">
+          <label className="text-xs uppercase tracking-wider text-white font-bold">
             Octave
           </label>
           <select
@@ -628,7 +628,7 @@ export default function Piano() {
         </div>
 
         <div className="flex items-center justify-between md:justify-start gap-2 w-full md:w-auto md:border-l md:border-gray-700 md:pl-4">
-          <label className="text-xs uppercase tracking-wider text-gray-400 font-bold">
+          <label className="text-xs uppercase tracking-wider text-white font-bold">
             Volume
           </label>
           <input
@@ -643,7 +643,7 @@ export default function Piano() {
         </div>
 
         <div className="flex items-center justify-between md:justify-start gap-2 w-full md:w-auto md:border-l md:border-gray-700 md:pl-4">
-          <label className="text-xs uppercase tracking-wider text-gray-400 font-bold">
+          <label className="text-xs uppercase tracking-wider text-white font-bold">
             Release
           </label>
           <input
@@ -658,7 +658,7 @@ export default function Piano() {
         </div>
 
         <div className="flex items-center justify-between md:justify-start gap-2 w-full md:w-auto md:border-l md:border-gray-700 md:pl-4">
-          <label className="text-xs uppercase tracking-wider text-gray-400 font-bold">
+          <label className="text-xs uppercase tracking-wider text-white font-bold">
             Speed
           </label>
           <select
@@ -674,7 +674,7 @@ export default function Piano() {
 
         <div className="flex items-center justify-between md:justify-start gap-2 w-full md:w-auto md:border-l md:border-gray-700 md:pl-4">
           <label
-            className="text-xs uppercase tracking-wider text-gray-400 font-bold cursor-pointer select-none"
+            className="text-xs uppercase tracking-wider text-white font-bold cursor-pointer select-none"
             htmlFor="guide-toggle"
           >
             Scale Guide

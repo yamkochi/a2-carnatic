@@ -27,12 +27,12 @@ export default function Navbar({ initialUser }) {
 
   const navItems = [
     {
-      label: "Mela Ragas ",
+      label: "Play & Feel  ",
       href: "/",
       special: false,
       subItems: [
-        { label: "Play &Feel ", href: "/" },
-        { label: "Features", href: "/features" },
+        { label: "Mela Ragas", href: "/" },
+        { label: "Janya Ragas", href: "/janya-keyboard" },
       ],
     },
     {
@@ -42,13 +42,10 @@ export default function Navbar({ initialUser }) {
       subItems: [{ label: "Members List", href: "/admin/members" }],
     },
     {
-      label: "Projects",
+      label: "Mela Manager",
       href: "/admin",
       special: true,
-      subItems: [
-        { label: "Assign Tasks", href: "/projects" },
-        { label: "View Tasks", href: "/projects/tasks" },
-      ],
+      subItems: [{ label: "Manage Mela ragams", href: "/admin/mela-manager" }],
     },
     {
       label: "Recite a 'SWARA'",
@@ -356,14 +353,14 @@ export default function Navbar({ initialUser }) {
                     Time Spent:
                   </strong>
                   <span className="text-sky-400 font-semibold text-xs block mt-0.5">
-                    5 days &times; 10 hrs
+                    15 days (24 May 26 - 07 Jun 26 )
                   </span>
                 </div>
               </div>
               <p className="text-xs text-gray-400 italic">
                 Completed on :{" "}
                 <span className="text-gray-300 font-semibold not-italic">
-                  31 MAY 2026
+                  07 june 2026
                 </span>
               </p>
               <div className="border-t border-gray-700/60 pt-3 space-y-3">
@@ -374,6 +371,21 @@ export default function Navbar({ initialUser }) {
                   <span className="text-gray-200 font-medium">
                     &quot;Mr. Brad Schiff&quot;, Lecturer, Udemy Academy
                   </span>
+                  <div>
+                    <span className="text-gray-200 font-medium">
+                      &quot;Mr. SivaKumar&quot;, Classical Musician
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-200 font-medium">
+                      &quot;Mr. Salim Kumar&quot;, Classical Violinist
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-200 font-medium">
+                      &quot;Mr. Dileep Kumar&quot;, Tabela Master
+                    </span>
+                  </div>
                 </p>
                 <p className="text-xs">
                   <strong className="text-sky-400 uppercase text-[10px] tracking-widest font-black block mb-0.5">
@@ -384,7 +396,7 @@ export default function Navbar({ initialUser }) {
                     <span className="text-indigo-400 font-bold font-mono text-xs px-1.5 py-0.5 bg-gray-900 rounded">
                       கடைசி பக்கம்
                     </span>{" "}
-                    members who forced me to study Carnatic Music Theory.
+                    Members who have been encouraging me since 2020.
                   </span>
                 </p>
               </div>
