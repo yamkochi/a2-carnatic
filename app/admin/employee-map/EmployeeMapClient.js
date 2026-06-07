@@ -1,7 +1,7 @@
 "use client"
 import { useEffect } from "react"
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet" // 👈 Added Popup to imports
-import "leaflet/dist/leaflet.css"
+
 import L from "leaflet"
 
 function MapResizeTrigger() {

@@ -3,7 +3,7 @@ import { cookies } from "next/headers"
 import { sessionOptions } from "@/lib/session"
 import Navbar from "@/components/Navbar"
 import "@/app/globals.css"
-
+import "leaflet/dist/leaflet.css" // 👈 ADD THIS LINE HERE
 export default async function RootLayout({ children }) {
   // 1. Fetch cookie session data on server-side initial load
   const session = await getIronSession(cookies(), sessionOptions)
