@@ -318,7 +318,7 @@ export default function Navbar({ initialUser }) {
             <div className="flex flex-col items-center mb-5 mt-2">
               <div className="relative w-24 h-24 rounded-full border-4 border-gray-700 bg-gray-900 overflow-hidden shadow-inner flex items-center justify-center">
                 <img
-                  src="/appicons/anand02.jpg"
+                  src="/appicons/anand02.png"
                   alt="Ananda Manoharan Profile Avatar"
                   className="w-full h-full object-cover"
                   onError={(e) => {
